@@ -11,33 +11,68 @@ from reltr_detector import RelTR
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class MockSceneGraphDataset(Dataset):
+import os
+import json
+import cv2
+
+class VisualGenomeDataset(Dataset):
     """
-    A mock PyTorch dataset mimicking Visual Genome for Scene Graph Generation.
-    Returns random image tensors and mock ground-truth graphs.
+    Actual Scene Graph Dataset loader.
+    Expects a directory of images and a JSON file containing annotations.
+    JSON structure should follow standard Scene Graph format:
+    [
+      {
+        "image_id": "123",
+        "file_name": "image_123.jpg",
+        "objects": [{"box": [cx, cy, w, h], "class_id": 5}],
+        "relations": [{"source": 0, "target": 1, "predicate": 12}]
+      }
+    ]
     """
-    def __init__(self, num_samples=100, max_queries=10):
-        self.num_samples = num_samples
+    def __init__(self, img_dir: str, annotation_json: str, max_queries: int = 10):
+        self.img_dir = img_dir
         self.max_queries = max_queries
+        
+        logger.info(f"Loading dataset annotations from {annotation_json}...")
+        if os.path.exists(annotation_json):
+            with open(annotation_json, 'r') as f:
+                self.data = json.load(f)
+            logger.info(f"Loaded {len(self.data)} actual training samples.")
+        else:
+            logger.warning(f"Annotation file {annotation_json} not found. Creating empty dataset.")
+            self.data = []
 
     def __len__(self):
-        return self.num_samples
+        return len(self.data)
 
     def __getitem__(self, idx):
-        # 1. Generate random image tensor (3, 800, 800)
-        img = torch.rand(3, 800, 800)
+        item = self.data[idx]
+        img_path = os.path.join(self.img_dir, item['file_name'])
         
-        # 2. Generate random ground truth for 10 queries
-        # Classes: 0-150 (random)
-        gt_classes = torch.randint(0, 151, (self.max_queries,))
+        # Load and preprocess image
+        if os.path.exists(img_path):
+            img = cv2.imread(img_path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, (800, 800))
+            img_tensor = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+        else:
+            # Fallback black image if missing
+            img_tensor = torch.zeros(3, 800, 800)
+            
+        # Parse ground truth
+        gt_classes = torch.zeros(self.max_queries, dtype=torch.long)
+        gt_boxes = torch.zeros((self.max_queries, 4), dtype=torch.float32)
+        gt_relations = torch.zeros(self.max_queries, dtype=torch.long)
         
-        # Bounding boxes: [cx, cy, w, h] normalized between 0 and 1
-        gt_boxes = torch.rand(self.max_queries, 4)
-        
-        # Relations: 0-50 (random)
-        gt_relations = torch.randint(0, 51, (self.max_queries,))
-        
-        return img, gt_classes, gt_boxes, gt_relations
+        for i, obj in enumerate(item.get('objects', [])[:self.max_queries]):
+            gt_classes[i] = obj['class_id']
+            gt_boxes[i] = torch.tensor(obj['box'])
+            
+        for i, rel in enumerate(item.get('relations', [])[:self.max_queries]):
+            # Simplified relation mapping for 1D target loss
+            gt_relations[i] = rel['predicate']
+            
+        return img_tensor, gt_classes, gt_boxes, gt_relations
 
 
 def train_reltr(epochs=5, batch_size=4, lr=1e-4):
@@ -45,7 +80,10 @@ def train_reltr(epochs=5, batch_size=4, lr=1e-4):
     logger.info(f"Starting RelTR training on {device}...")
     
     # 1. Initialize Dataset & Loader
-    dataset = MockSceneGraphDataset(num_samples=200) # Small dataset for hackathon demo
+    # Specify your actual data paths here:
+    data_dir = "d:/fusionx-hacksters/data/images"
+    annotations = "d:/fusionx-hacksters/data/scene_graphs.json"
+    dataset = VisualGenomeDataset(img_dir=data_dir, annotation_json=annotations)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     # 2. Initialize Model

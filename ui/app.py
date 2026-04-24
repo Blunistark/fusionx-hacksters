@@ -286,7 +286,10 @@ if selected_video:
                     import sys
                     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
                     from perception.reltr_detector import RelTRSceneGraphGenerator
-                    st.session_state.reltr_generator = RelTRSceneGraphGenerator()
+                    weights = os.path.join(os.path.dirname(__file__), '..', 'reltr_hackathon_checkpoint.pth')
+                    if not os.path.exists(weights):
+                        weights = None
+                    st.session_state.reltr_generator = RelTRSceneGraphGenerator(weights_path=weights)
                     
                 sct = None
                 cap = None
