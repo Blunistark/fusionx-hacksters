@@ -12,6 +12,7 @@ from ultralytics import YOLO
 import sys
 
 import requests
+import base64
 
 # Add RelTR directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'RelTR')))
@@ -88,29 +89,43 @@ class FusionXEngine:
                         hazards.append(f"{d1['label']} IMPACT {d2['label']}")
 
         elif self.domain == "Security":
-            # Loitering / Suspicious Entry
             if len([d for d in detections if d['label'] == 'person']) > 5:
                 self.instant_alert = True
                 hazards.append("Unusual Crowd Density Detected")
 
-        # 3. Brain Call
-        if frame_count % 60 == 0 and detections and not self.is_thinking:
-            threading.Thread(target=self.ask_ollama, args=(detections, hazards)).start()
+        # 3. Vision-Aware Brain Call (Every 90 frames for stability)
+        if frame_count % 90 == 0 and detections and not self.is_thinking:
+            # Convert frame to base64 for Vision analysis
+            _, buffer = cv2.imencode('.jpg', frame)
+            img_str = base64.b64encode(buffer).decode('utf-8')
+            threading.Thread(target=self.ask_vision_ollama, args=(detections, hazards, img_str)).start()
 
         return frame
 
-    def ask_ollama(self, detections, hazards):
+    def ask_vision_ollama(self, detections, hazards, img_str):
         self.is_thinking = True
         prompt = f"""
         ROLE: {DOMAIN_PROMPTS[self.domain]}
-        DATA: {detections}
+        JSON DATA: {detections}
         ALERTS: {hazards}
-        TASK: Give a 1-sentence situational report.
+        TASK: Look at the attached image and the JSON data. Confirm the situation and narrate exactly what is happening. Mention visual details like colors or specific actions. 1 short sentence.
         """
         try:
-            res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
-            self.last_narration = res.json().get('response', 'Flow stable.')
-        except: self.last_narration = "Brain connection lost."
+            # Note: We use the 'images' parameter for Vision models in Ollama
+            payload = {
+                "model": "llava", # Automatically tries llava if available, else falls back
+                "prompt": prompt,
+                "images": [img_str],
+                "stream": False
+            }
+            res = requests.post(self.OLLAMA_URL, json=payload, timeout=15)
+            self.last_narration = res.json().get('response', 'Observing...')
+        except:
+            # Fallback to text-only if Vision fails
+            try:
+                res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
+                self.last_narration = res.json().get('response', 'Stable.')
+            except: self.last_narration = "Vision Engine Offline."
         self.is_thinking = False
 
 # --- STREAMLIT UI ---
