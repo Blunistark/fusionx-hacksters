@@ -89,56 +89,67 @@ class LLMAgentPool:
 - Overs: {domain_state.get('overs')}.{domain_state.get('balls')}
 - Striker: {domain_state.get('striker')}
 - Bowler: {domain_state.get('bowler')}"""
-            persona = "professional cricket commentator providing live, engaging commentary"
-            style = "Use cricket-specific language and terminology."
-        elif domain == "Security":
-            context = f"""- Persons Count: {domain_state.get('person_count')}
-- Alert Level: {domain_state.get('security_level')}
-- Location: {domain_state.get('location')}"""
-            persona = "highly alert security intelligence agent monitoring live feeds"
-            style = "Be formal, precise, and emphasize safety and threat levels."
+            
+            return f"""You are a professional cricket commentator providing live, engaging commentary.
+        
+Current Cricket State:
+{context}
+- Operation Phase: {domain_state.get('phase')}
+
+Your commentary should be:
+1. Energetic and engaging
+2. Technically accurate for Cricket
+3. Concise (strictly 1-2 sentences)
+4. Descriptive of the action and its implications
+5. Build on previous events to maintain narrative flow
+6. Use cricket-specific language and terminology.
+
+CRITICAL INSTRUCTION: DO NOT hallucinate. Do not invent names, scores, player interactions, or future events that are not explicitly provided in the state or the current event description. Stick strictly to what is happening right now.
+
+Generate content that sounds like a live Cricket broadcast."""
+
         elif domain == "Traffic":
             context = f"""- Vehicle Count: {domain_state.get('vehicle_count')}
 - Incident Count: {domain_state.get('incident_count')}
 - Avg Speed: {domain_state.get('avg_speed')} km/h
 - Intersection: {domain_state.get('intersection')}"""
-            persona = "traffic flow analyst providing real-time infrastructure reports"
-            style = "Focus on congestion levels, flow efficiency, and incidents."
-        else:
-            context = str(domain_state)
-            persona = "real-time event analyst"
-            style = "Be descriptive and accurate."
-
-        return f"""You are a {persona}.
+            
+            return f"""You are an automated emergency and traffic alerting system. DO NOT act like a human or a commentator. You output strict, precise, robotic alerts.
         
-Current {domain} State:
+Current Traffic State:
 {context}
-- Operation Phase: {domain_state.get('phase')}
 
-Your report/commentary should be:
-1. Energetic and engaging (if applicable) or precise and professional
-2. Technically accurate for the {domain} domain
-3. Concise (strictly 1-2 sentences)
-4. Descriptive of the action and its implications
-5. Build on previous events to maintain narrative flow
-6. {style}
+Your alert must be:
+1. Highly urgent and strictly professional.
+2. Formatted as an emergency alert (e.g. "ALERT: ...", "WARNING: ...").
+3. Extremely concise (1 short sentence).
+4. Focus only on the hazard, accident, or congestion.
 
-CRITICAL INSTRUCTION: DO NOT hallucinate. Do not invent names, scores, player interactions, or future events that are not explicitly provided in the state or the current event description. Stick strictly to what is happening right now.
+CRITICAL INSTRUCTION: DO NOT converse. DO NOT say 'folks'. DO NOT narrate. Provide ONLY the strict alert description.
 
-Generate content that sounds like a live {domain} monitoring feed output."""
+Generate content that sounds like an automated municipal dispatch alert."""
+            
+        else:
+            return f"""You are a precise real-time event analyzer. Be descriptive, accurate, and concise (1 sentence). Do not hallucinate."""
 
     
     def _build_user_prompt(self, event_description: str, domain_state: Dict, domain: str) -> str:
         """Build the user prompt with the current event and historical context"""
         
-        # Build historical context string
-        recent_history = ""
-        if len(self.commentary_history) > 0:
-            recent_history = "Recent Match History:\n"
-            for item in self.commentary_history[-4:]:
-                recent_history += f"- {item['commentary']}\n"
-        
-        return f"""Based on the {domain} state above, provide live report/commentary for this new event:
+        if domain == "Traffic":
+            return f"""NEW DETECTED EVENT: {event_description}
+            
+Generate the automated alert for this event now:"""
+            
+        else:
+            # Build historical context string for other domains (like Cricket)
+            recent_history = ""
+            if len(self.commentary_history) > 0:
+                recent_history = "Recent Match History:\n"
+                for item in self.commentary_history[-4:]:
+                    recent_history += f"- {item['commentary']}\n"
+            
+            return f"""Based on the {domain} state above, provide live report/commentary for this new event:
 
 {recent_history}
 
