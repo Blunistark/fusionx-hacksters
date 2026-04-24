@@ -1,10 +1,11 @@
 import cv2
 import json
 import time
+import requests
 from ultralytics import YOLO
 
 class PerceptionLayer:
-    def __init__(self, video_source, model_path="yolov8n.pt", stream_delay=0.03):
+    def __init__(self, video_source, model_path="yolov8n.pt", stream_delay=0.03, engine_url="http://localhost:8000/ingest"):
         """
         Initializes the YOLO model and the video capture.
         For a hackathon MVP, we use the nano model (yolov8n.pt) for maximum FPS.
@@ -14,10 +15,7 @@ class PerceptionLayer:
         self.video_source = video_source
         self.cap = cv2.VideoCapture(self.video_source)
         self.stream_delay = stream_delay # Simulate real-time if reading from file
-        
-        # In a real setup, you would initialize Redis here:
-        # import redis
-        # self.redis_client = redis.Redis(host='localhost', port=6379, db=0)
+        self.engine_url = engine_url
 
     def extract_physics(self, box, cls_name):
         """
@@ -37,14 +35,16 @@ class PerceptionLayer:
             "velocity_kph": 0 
         }
 
-    def push_to_broker(self, frame_data):
+    def send_to_engine(self, frame_data):
         """
-        Pushes the extracted coordinate array to the Redis stream (or prints for testing).
+        Pushes the extracted coordinate array to the FastAPI Engine via HTTP POST.
         This connects Layer 1 (Perception) to Layer 2 (The DSG FSM).
         """
-        payload = json.dumps(frame_data)
-        # self.redis_client.publish('vision_stream', payload)
-        print(f"[DATA STREAM] Pushed to Broker: {payload}")
+        try:
+            response = requests.post(self.engine_url, json=frame_data, timeout=0.1)
+            # print(f"[DATA STREAM] Sent to Engine | Status: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"[DATA STREAM ERROR] Could not connect to Engine at {self.engine_url}")
 
     def run(self):
         """
@@ -86,7 +86,7 @@ class PerceptionLayer:
 
             # Push the parsed coordinates to the middleware immediately
             if frame_nodes:
-                self.push_to_broker({"frame": frame_count, "nodes": frame_nodes})
+                self.send_to_engine({"frame": frame_count, "nodes": frame_nodes})
             
             # Optional: Display the frame for debugging during the hackathon
             cv2.imshow("Layer 1: Perception (YOLO Vision)", results[0].plot())
@@ -101,7 +101,6 @@ class PerceptionLayer:
         print("Ingestion pipeline terminated.")
 
 if __name__ == "__main__":
-    # For testing, use 0 for webcam, or a path to a sample video file like 'sample_cricket.mp4'
-    # Download a sample video to your folder to test this!
-    tracker = PerceptionLayer(video_source=0)
+    # Ensure you have 'clip1.mp4' in this directory or provide the absolute path.
+    tracker = PerceptionLayer(video_source='clip1.mp4')
     tracker.run()
