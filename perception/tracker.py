@@ -1,17 +1,21 @@
 import cv2
 import json
 import time
-import requests
-from ultralytics import YOLO
+try:
+    # prefer package-style import when running from project root
+    from perception.detector import Detector, draw_detections
+except Exception:
+    # fallback when running this file directly
+    from detector import Detector, draw_detections
 
 class PerceptionLayer:
-    def __init__(self, video_source, model_path="yolov8n.pt", stream_delay=0.03, engine_url="http://localhost:8000/ingest"):
+    def __init__(self, video_source, model_backend="ultralytics", model_path="yolov8n.pt", device='cpu', stream_delay=0.03):
         """
         Initializes the YOLO model and the video capture.
         For a hackathon MVP, we use the nano model (yolov8n.pt) for maximum FPS.
         """
-        print(f"Loading YOLO model from {model_path}...")
-        self.model = YOLO(model_path)
+        print(f"Loading detector backend={model_backend} path={model_path} device={device}...")
+        self.detector = Detector(backend=model_backend, model_path=model_path, device=device)
         self.video_source = video_source
         self.cap = cv2.VideoCapture(self.video_source)
         self.stream_delay = stream_delay # Simulate real-time if reading from file
@@ -22,7 +26,8 @@ class PerceptionLayer:
         Extracts raw geometry from the YOLO bounding box.
         Returns a dictionary formatted for our DSG engine.
         """
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        # `box` is expected as [x1,y1,x2,y2]
+        x1, y1, x2, y2 = map(int, box)
         # Calculate center point for velocity tracking (simplified for MVP)
         cx = (x1 + x2) // 2
         cy = (y1 + y2) // 2
@@ -64,32 +69,27 @@ class PerceptionLayer:
                 
             frame_count += 1
             
-            # Run YOLO inference
-            # conf=0.5 ensures we only get confident detections, reducing noise for the FSM
-            results = self.model(frame, verbose=False, conf=0.5)
-            
+            # Run detector inference (model-agnostic)
+            detections = self.detector.detect(frame, conf=0.5)
+
             frame_nodes = {}
-            
-            # Parse YOLO results into our DSG node format
-            for result in results:
-                for box in result.boxes:
-                    cls_id = int(box.cls[0])
-                    cls_name = self.model.names[cls_id]
-                    
-                    # For cricket, you'd filter for 'sports ball', 'person' (bat/batsman)
-                    # For this generic script, we parse whatever it confidently detects
-                    node_data = self.extract_physics(box, cls_name)
-                    
-                    # Assign a unique ID per class in this frame (simplified)
-                    node_id = f"{cls_name}_{len(frame_nodes)}"
-                    frame_nodes[node_id] = node_data
+
+            # Parse detections into DSG node format
+            for i, det in enumerate(detections):
+                cls_name = det['label']
+                box = det['box']
+                # For cricket, we will filter later for 'sports ball' and 'person'
+                node_data = self.extract_physics(box, cls_name)
+                node_id = f"{cls_name}_{i}"
+                frame_nodes[node_id] = node_data
 
             # Push the parsed coordinates to the middleware immediately
             if frame_nodes:
                 self.send_to_engine({"frame": frame_count, "nodes": frame_nodes})
             
             # Optional: Display the frame for debugging during the hackathon
-            cv2.imshow("Layer 1: Perception (YOLO Vision)", results[0].plot())
+            annotated = draw_detections(frame.copy(), detections) if detections else frame
+            cv2.imshow("Layer 1: Perception (YOLO Vision)", annotated)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
