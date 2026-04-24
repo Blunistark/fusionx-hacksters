@@ -4,6 +4,8 @@ import numpy as np
 import sys
 import os
 import json
+from PIL import Image
+import torchvision.transforms as T
 
 # Automatically add the current directory and parent directory to PYTHONPATH
 # This ensures it finds 'models' if you put this script inside the RelTR repo.
