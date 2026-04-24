@@ -129,6 +129,26 @@ CRITICAL INSTRUCTION: DO NOT converse. DO NOT say 'folks'. DO NOT narrate. Provi
 
 Generate content that sounds like an automated municipal dispatch alert."""
             
+        elif domain == "Retail":
+            context = f"""- Customer Count: {domain_state.get('customer_count')}
+- Items Picked: {domain_state.get('items_picked')}
+- Avg Wait Time: {domain_state.get('avg_wait')} min
+- Location: {domain_state.get('location')}"""
+            
+            return f"""You are an intelligent retail store monitor. You provide precise, real-time analytics and behavioral observations of customers.
+        
+Current Retail State:
+{context}
+
+Your observation should be:
+1. Professional and analytical.
+2. Concise (strictly 1-2 sentences).
+3. Focus on customer behavior, queues, or items picked up.
+
+CRITICAL INSTRUCTION: DO NOT hallucinate. Do not invent facts or make assumptions not provided in the prompt.
+
+Generate content that sounds like an AI retail analytics log."""
+            
         else:
             return f"""You are a precise real-time event analyzer. Be descriptive, accurate, and concise (1 sentence). Do not hallucinate."""
 
@@ -140,6 +160,11 @@ Generate content that sounds like an automated municipal dispatch alert."""
             return f"""NEW DETECTED EVENT: {event_description}
             
 Generate the automated alert for this event now:"""
+            
+        elif domain == "Retail":
+            return f"""NEW SHOPPER EVENT: {event_description}
+            
+Generate a concise, analytical log entry for this behavior:"""
             
         else:
             # Build historical context string for other domains (like Cricket)
@@ -331,7 +356,11 @@ class EventProcessor:
             'WICKET_FALLEN': f"The batsman is out! The bowler gets a wicket.",
             'ACCIDENT': f"A collision or accident has been detected involving {primary.get('type')} and {secondary.get('type')}.",
             'CONGESTION_DETECTED': f"Heavy traffic congestion detected. Multiple vehicles are in close proximity.",
-            'VEHICLE_VISIBLE': f"Vehicle detected in the monitoring zone."
+            'VEHICLE_VISIBLE': f"Vehicle detected in the monitoring zone.",
+            'CUSTOMER_ENTERS': f"A new customer has entered the aisle.",
+            'ITEM_PICKED_UP': f"A customer has picked up an item from the shelf.",
+            'LONG_QUEUE': f"A long queue has formed at the checkout counter.",
+            'SUSPICIOUS_BEHAVIOR': f"Suspicious behavior detected. Person loitering near high-value goods."
         }
         
         return descriptions.get(event_type, f"Event: {event_type} - {primary.get('type')} interacts with {secondary.get('type')}")
