@@ -1,0 +1,28 @@
+# Python
+.venv/
+env/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node.js (For UI)
+node_modules/
+dist/
+build/
+.env
+
+# YOLO Models & Large Files
+*.pt
+*.weights
+*.mp4
+*.avi
+
+# IDEs
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db

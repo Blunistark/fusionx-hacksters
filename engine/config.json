@@ -1,0 +1,19 @@
+{
+  "scenario_name": "Cricket_Commentary",
+  "triggers_to_watch": [
+    {
+      "trigger_name": "SHOT_PLAYED",
+      "node_A_type": "Ball",
+      "node_B_type": "Bat",
+      "condition": "INTERSECTS",
+      "action": "FIRE_PAYLOAD"
+    },
+    {
+      "trigger_name": "BALL_PITCHED",
+      "node_A_type": "Ball",
+      "node_B_type": "Pitch",
+      "condition": "INTERSECTS",
+      "action": "FIRE_PAYLOAD"
+    }
+  ]
+}
