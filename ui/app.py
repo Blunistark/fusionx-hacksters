@@ -105,6 +105,21 @@ def init_session_state():
     if 'selected_video' not in st.session_state:
         st.session_state.selected_video = None
 
+    # --- Initialize Domain Engines ---
+    if st.session_state.selected_domain == "Traffic" and 'traffic_engine' not in st.session_state:
+        try:
+            from agent_integration import FusionXEngine
+            st.session_state.traffic_engine = FusionXEngine(domain="Traffic")
+        except Exception as e:
+            st.error(f"Failed to load Traffic Engine: {e}")
+    
+    if st.session_state.selected_domain == "Cricket" and 'cricket_engine' not in st.session_state:
+        try:
+            from agent_integration import FusionXEngine
+            st.session_state.cricket_engine = FusionXEngine(domain="Cricket")
+        except Exception as e:
+            st.error(f"Failed to load Cricket Engine: {e}")
+
 init_session_state()
 
 # Get available videos from assets folder
@@ -432,37 +447,35 @@ if selected_video:
                                 "event": f"Trigger: {trigger_payload.get('event', 'Unknown')}"
                             })
                             
-                        # --- FUSIONX TRAFFIC INTELLIGENCE ENGINE ---
-                        if st.session_state.selected_domain == "Traffic":
-                            if 'traffic_engine' not in st.session_state:
-                                from ui.agent_integration import FusionXEngine # We'll use the logic from the previous script
-                                st.session_state.traffic_engine = FusionXEngine()
-                            
-                            # Process frame through the reflex engine
-                            frame_annotated = st.session_state.traffic_engine.process_frame(frame, st.session_state.current_frame)
+                        # --- FUSIONX DOMAIN INTELLIGENCE ---
+                        engine_key = f"{st.session_state.selected_domain.lower()}_engine"
+                        if engine_key in st.session_state:
+                            engine = st.session_state[engine_key]
+                            # Process frame through the domain engine
+                            frame_annotated = engine.process_frame(frame, st.session_state.current_frame)
                             
                             # Update Dashboard Components
                             with col_main:
                                 st_narration = st.empty()
                                 st_narration.markdown(f"""
                                     <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:15px;'>
-                                        <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ GLOBAL NARRATOR</b><br/>
-                                        <span style='font-size:1.1rem; color:white;'>"{st.session_state.traffic_engine.last_narration}"</span>
+                                        <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ {st.session_state.selected_domain.upper()} NARRATOR</b><br/>
+                                        <span style='font-size:1.1rem; color:white;'>"{engine.last_narration}"</span>
                                     </div>
                                 """, unsafe_allow_html=True)
                             
                             with col_data:
-                                st.write("#### 🤖 Agent Swarm Debate")
-                                # Physics Agent
-                                st.info(f"**Agent 1 (Physics):** {getattr(st.session_state.traffic_engine, 'physics_thought', 'Analyzing kinetic forces...')}")
-                                # Auditor Agent
-                                st.warning(f"**Agent 2 (Auditor):** {getattr(st.session_state.traffic_engine, 'auditor_thought', 'Evaluating scene context...')}")
-                                # Executive Agent
-                                st.error(f"**Agent 3 (Executive):** {st.session_state.traffic_engine.last_verdict}")
+                                st.write(f"#### 🤖 {st.session_state.selected_domain} Agent Swarm")
+                                # Show thoughts if available
+                                if hasattr(engine, 'physics_thought'):
+                                    st.info(f"**Physical Analyst:** {engine.physics_thought}")
+                                st.error(f"**Consensus Verdict:** {engine.last_verdict}")
                                 
-                                if st.session_state.traffic_engine.instant_alert:
-                                    st.markdown("🚨 **INSTANT IMPACT DETECTED**", unsafe_allow_html=True)
-
+                                if getattr(engine, 'instant_alert', False):
+                                    st.markdown("🚨 **CRITICAL EVENT DETECTED**", unsafe_allow_html=True)
+                        else:
+                            # Fallback if engine didn't load
+                            frame_annotated = frame.copy()
                         # --- RENDER ---
                         raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                         analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
