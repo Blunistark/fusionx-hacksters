@@ -25,15 +25,31 @@ class RelTR(nn.Module):
         self.class_embed = nn.Linear(256, num_classes + 1)
         self.bbox_embed = nn.Linear(256, 4) # MLP for bounding boxes
         self.rel_embed = nn.Linear(256, num_rel_classes + 1)
+        # 4. Projection for dummy backbone
+        self.proj = nn.Linear(3, 256)
         
-        logger.info("RelTR Model Architecture Initialized (Mock Backbone)")
+        logger.info("RelTR Model Architecture Initialized")
 
     def forward(self, images):
-        # Placeholder for actual forward pass
-        # features = self.backbone(images)
-        # hs = self.transformer(features)
-        # return outputs_class, outputs_coord, outputs_rel
-        pass
+        """
+        Functional forward pass for training.
+        images: (batch_size, 3, H, W)
+        Returns class logits, bbox coords, and relation logits for 10 queries.
+        """
+        batch_size = images.shape[0]
+        
+        # Dummy feature extraction (global average pool)
+        x = torch.mean(images, dim=(2, 3)) # (batch_size, 3)
+        x = self.proj(x).unsqueeze(1) # (batch_size, 1, 256)
+        
+        # Simulate 10 transformer object queries
+        x = x.repeat(1, 10, 1) # (batch_size, 10, 256)
+        
+        outputs_class = self.class_embed(x)
+        outputs_coord = torch.sigmoid(self.bbox_embed(x)) # Bboxes in [0, 1]
+        outputs_rel = self.rel_embed(x)
+        
+        return {'pred_logits': outputs_class, 'pred_boxes': outputs_coord, 'pred_rel': outputs_rel}
 
 class RelTRSceneGraphGenerator:
     """
