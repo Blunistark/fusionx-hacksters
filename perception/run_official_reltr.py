@@ -143,9 +143,12 @@ if __name__ == "__main__":
     
     # Path to your downloaded weights
     weights_file = 'checkpoint0149.pth'
+    if not os.path.exists(weights_file):
+        weights_file = os.path.join('ckp', 'checkpoint0149.pth')
     
     if not os.path.exists(weights_file):
-        print(f"Error: {weights_file} not found. Please download it from the official RelTR repo.")
+        print(f"Error: checkpoint0149.pth not found in root or ckp/ folder.")
+        print("Please ensure you downloaded it from the official RelTR repo.")
         sys.exit(1)
         
     runner = OfficialRelTRRunner(weights_file)
