@@ -11,8 +11,8 @@ import yt_dlp
 from ultralytics import YOLO
 import sys
 
-# Add local path for RelTR models
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'perception')))
+# Add RelTR directory to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'RelTR')))
 from models import build_model
 
 # --- AI CORE ENGINE ---
