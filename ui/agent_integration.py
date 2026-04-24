@@ -14,66 +14,82 @@ import sys
 # Add RelTR directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'RelTR')))
 
-# --- AI CORE ENGINE ---
+# --- DOMAIN INTELLIGENCE CONFIG ---
+DOMAIN_PROMPTS = {
+    "Cricket": "You are a professional Cricket Commentator. Analyze the player movements and ball trajectory. Speak with excitement and use cricket terminology like 'Good length', 'Square leg', 'Clean bowled'.",
+    "Security": "You are a High-Security Warden. Analyze the scene for suspicious behavior, unauthorized entry, or loitering. Be formal and focus on risk assessment.",
+    "Traffic": "You are a Traffic Safety Swarm. Analyze for accidents, speeding, and reckless driving. Focus on impact physics and road safety."
+}
+
+DOMAIN_MODELS = {
+    "Cricket": ["yolov8m.pt", "yolov8m-pose.pt"], # Accuracy + Human Pose
+    "Security": ["yolov8x.pt"], # Highest accuracy for faces/objects
+    "Traffic": ["yolov8n.pt", "yolov10n.pt"] # High speed for motion
+}
+
 class FusionXEngine:
-    def __init__(self, model_name='yolov8n.pt'):
+    def __init__(self, domain="Traffic"):
+        self.domain = domain
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model = YOLO(model_name)
-        self.last_narration = "Awaiting Stream..."
+        
+        # Load the specialized Ensemble for the domain
+        self.models = [YOLO(m) for m in DOMAIN_MODELS.get(domain, ["yolov8n.pt"])]
+        
+        self.last_narration = f"Initializing {domain} Intelligence..."
+        self.last_verdict = "Stable"
         self.instant_alert = False
-        self.evidence_captured = []
+        self.is_thinking = False
         self.OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
         self.OLLAMA_MODEL = "llama3"
-        self.is_thinking = False
 
     def process_frame(self, frame, frame_count):
-        # 1. YOLO Detection
-        results = self.model(frame, verbose=False)[0]
+        # 1. Run Domain Ensemble
         detections = []
-        for box in results.boxes:
-            if box.conf[0] > 0.45:
-                label = self.model.names[int(box.cls[0])]
-                bbox = box.xyxy[0].tolist()
-                detections.append({"label": label, "bbox": bbox})
-                cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+        for model in self.models:
+            res = model(frame, verbose=False)[0]
+            for box in res.boxes:
+                if box.conf[0] > 0.4:
+                    label = model.names[int(box.cls[0])]
+                    detections.append({"label": label, "bbox": box.xyxy[0].tolist()})
+                    cv2.rectangle(frame, (int(box.xyxy[0][0]), int(box.xyxy[0][1])), (int(box.xyxy[0][2]), int(box.xyxy[0][3])), (0, 255, 0), 1)
 
-        # 2. Physics Reflex
+        # 2. Domain-Specific Reasoning
         self.instant_alert = False
         hazards = []
-        for i, d1 in enumerate(detections):
-            for j, d2 in enumerate(detections):
-                if i >= j: continue
-                b1, b2 = d1['bbox'], d2['bbox']
-                if not (b1[2] < b2[0] or b1[0] > b2[2] or b1[3] < b2[1] or b1[1] > b2[3]):
-                    if abs(b1[3] - b2[3]) < 45:
+        
+        if self.domain == "Traffic":
+            # Impact Physics
+            for i, d1 in enumerate(detections):
+                for j, d2 in enumerate(detections):
+                    if i >= j: continue
+                    if abs(d1['bbox'][3] - d2['bbox'][3]) < 40: # Same ground level
                         self.instant_alert = True
                         hazards.append(f"{d1['label']} IMPACT {d2['label']}")
-                        if frame_count % 20 == 0:
-                            self.capture_evidence(frame, d1['label'], d2['label'])
-        
-        # 3. Async AI Reasoning
+
+        elif self.domain == "Security":
+            # Loitering / Suspicious Entry
+            if len([d for d in detections if d['label'] == 'person']) > 5:
+                self.instant_alert = True
+                hazards.append("Unusual Crowd Density Detected")
+
+        # 3. Brain Call
         if frame_count % 60 == 0 and detections and not self.is_thinking:
             threading.Thread(target=self.ask_ollama, args=(detections, hazards)).start()
 
-        if self.instant_alert:
-            cv2.rectangle(frame, (0,0), (frame.shape[1], frame.shape[0]), (0,0,255), 10)
-
         return frame
-
-    def capture_evidence(self, frame, label1, label2):
-        ts = int(time.time())
-        path = f"accident_evidence/ui_{ts}.jpg"
-        if not os.path.exists("accident_evidence"): os.makedirs("accident_evidence")
-        cv2.imwrite(path, frame)
-        self.evidence_captured.append({"path": path, "reason": f"{label1} vs {label2}", "time": time.ctime()})
 
     def ask_ollama(self, detections, hazards):
         self.is_thinking = True
-        prompt = f"Strict Analysis: Objs={detections}, Hazards={hazards}. Describe the scene in 1 sentence. If no crash, say 'Flowing'."
+        prompt = f"""
+        ROLE: {DOMAIN_PROMPTS[self.domain]}
+        DATA: {detections}
+        ALERTS: {hazards}
+        TASK: Give a 1-sentence situational report.
+        """
         try:
-            res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=5)
-            self.last_narration = res.json().get('response', 'Monitoring...')
-        except: self.last_narration = "Brain Offline."
+            res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
+            self.last_narration = res.json().get('response', 'Flow stable.')
+        except: self.last_narration = "Brain connection lost."
         self.is_thinking = False
 
 # --- STREAMLIT UI ---

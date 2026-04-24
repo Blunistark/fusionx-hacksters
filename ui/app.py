@@ -432,39 +432,41 @@ if selected_video:
                                 "event": f"Trigger: {trigger_payload.get('event', 'Unknown')}"
                             })
                             
-                        # 3. Render
+                        # --- FUSIONX TRAFFIC INTELLIGENCE ENGINE ---
+                        if st.session_state.selected_domain == "Traffic":
+                            if 'traffic_engine' not in st.session_state:
+                                from ui.agent_integration import FusionXEngine # We'll use the logic from the previous script
+                                st.session_state.traffic_engine = FusionXEngine()
+                            
+                            # Process frame through the reflex engine
+                            frame_annotated = st.session_state.traffic_engine.process_frame(frame, st.session_state.current_frame)
+                            
+                            # Update Dashboard Components
+                            with col_main:
+                                st_narration = st.empty()
+                                st_narration.markdown(f"""
+                                    <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:15px;'>
+                                        <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ GLOBAL NARRATOR</b><br/>
+                                        <span style='font-size:1.1rem; color:white;'>"{st.session_state.traffic_engine.last_narration}"</span>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            
+                            with col_data:
+                                st.write("#### 🤖 Agent Swarm Debate")
+                                # Physics Agent
+                                st.info(f"**Agent 1 (Physics):** {getattr(st.session_state.traffic_engine, 'physics_thought', 'Analyzing kinetic forces...')}")
+                                # Auditor Agent
+                                st.warning(f"**Agent 2 (Auditor):** {getattr(st.session_state.traffic_engine, 'auditor_thought', 'Evaluating scene context...')}")
+                                # Executive Agent
+                                st.error(f"**Agent 3 (Executive):** {st.session_state.traffic_engine.last_verdict}")
+                                
+                                if st.session_state.traffic_engine.instant_alert:
+                                    st.markdown("🚨 **INSTANT IMPACT DETECTED**", unsafe_allow_html=True)
+
+                        # --- RENDER ---
                         raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                         analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        json_placeholder.json({"frame": st.session_state.current_frame, "dsg_trigger": trigger_payload, "nodes": frame_nodes})
-                        
-                        # 4. LLM Generation
-                        if trigger_payload:
-                            commentary = st.session_state.agent_pool.generate_commentary(
-                                json.dumps(trigger_payload),
-                                st.session_state.domain_state,
-                                st.session_state.selected_domain
-                            )
-                            if commentary:
-                                st.session_state.commentary_history.append({
-                                    "timestamp": datetime.now().isoformat(),
-                                    "event": json.dumps(trigger_payload),
-                                    "commentary": commentary
-                                })
-                                    
-                        if st.session_state.commentary_history:
-                            html = "<div style='height: 250px; overflow-y: auto; display: flex; flex-direction: column-reverse; padding: 10px; border: 1px solid #333; border-radius: 5px; background: #0e1117;'>"
-                            for item in reversed(st.session_state.commentary_history[-15:]):
-                                time_str = item['timestamp'][11:19]
-                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; color: white; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
-                            html += "</div>"
-                            comm_placeholder.markdown(html, unsafe_allow_html=True)
-                            
-                            # Update Prompt Engineering Tab
-                            if hasattr(st.session_state.agent_pool, 'last_system_prompt'):
-                                prompt_placeholder.markdown(
-                                    f"**System Prompt:**\n```text\n{st.session_state.agent_pool.last_system_prompt}\n```\n\n"
-                                    f"**User Prompt:**\n```text\n{st.session_state.agent_pool.last_user_prompt}\n```"
-                                )
+                        json_placeholder.json({"frame": st.session_state.current_frame, "nodes": frame_nodes, "verdict": getattr(st.session_state.traffic_engine, 'last_verdict', 'N/A')})
                             
                         st.session_state.current_frame += 1
                         import time
