@@ -175,6 +175,16 @@ with st.sidebar:
     
     st.divider()
     
+    # Vision Engine Configuration
+    st.subheader("👁️ Vision Engine")
+    vision_engine = st.radio(
+        "Select Detection Architecture",
+        ["YOLOv8 + Spatial Math", "RelTR Transformer (Phase 3 Experimental)"]
+    )
+    st.session_state.vision_engine = vision_engine
+    
+    st.divider()
+
     # Domain-specific configuration
     st.subheader(f"{domain_cfg['icon']} {selected_domain} Setup")
     
@@ -267,10 +277,16 @@ if selected_video:
             
         if is_live or os.path.exists(video_path):
             try:
-                # Initialize YOLO locally for frontend
+                # Initialize Vision Models
                 if 'yolo_detector' not in st.session_state:
                     from perception.detector import Detector
                     st.session_state.yolo_detector = Detector(backend='ultralytics', model_path='yolov8n.pt', device='cuda')
+                    
+                if 'reltr_generator' not in st.session_state:
+                    import sys
+                    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+                    from perception.reltr_detector import RelTRSceneGraphGenerator
+                    st.session_state.reltr_generator = RelTRSceneGraphGenerator()
                     
                 sct = None
                 cap = None
@@ -320,64 +336,92 @@ if selected_video:
                             st.session_state.playing = False
                             st.rerun()
                             
-                        # 1. Vision Analysis
-                        detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
-                        from perception.detector import draw_detections
-                        frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
-                        
-                        # Format DSG nodes
+                        # 1. Vision Analysis & DSG Generation
+                        trigger_payload = None
                         frame_nodes = {}
-                        for i, det in enumerate(detections):
-                            cls_name = det['label']
+                        
+                        if st.session_state.vision_engine == "RelTR Transformer (Experimental)" or "RelTR" in st.session_state.vision_engine:
+                            # --- PHASE 3: RELTR SCENE GRAPH GENERATION ---
+                            scene_graph = st.session_state.reltr_generator.generate_scene_graph(frame)
+                            frame_annotated = st.session_state.reltr_generator.draw_scene_graph(frame.copy(), scene_graph)
                             
-                            # Map standard YOLO COCO classes to our custom Domain labels
-                            if cls_name == "sports ball": cls_name = "Ball"
-                            elif cls_name in ["baseball bat", "tennis racket"]: cls_name = "Bat"
-                            elif cls_name == "person": 
-                                cls_name = "Player"
-                                # --- HEURISTIC ROLE IDENTIFICATION ---
-                                # Check if the person is wearing black (Umpire) or colored jersey (Team)
-                                x1, y1, x2, y2 = map(int, det['box'])
-                                crop = frame[max(0, y1):y2, max(0, x1):x2]
-                                if crop.size > 0:
-                                    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                                    # Calculate average brightness/value (0-255, where black is < 50)
-                                    mean_brightness = np.mean(hsv[:, :, 2])
-                                    if mean_brightness < 60:
-                                        cls_name = "Umpire"
-                            
-                            x1, y1, x2, y2 = map(int, det['box'])
-                            
-                            # For MVP DSG, we only track the primary instance of each class
-                            if cls_name not in frame_nodes:
-                                frame_nodes[cls_name] = {
-                                    "type": cls_name,
-                                    "box": [x1, y1, x2, y2],
-                                    "center": [(x1+x2)//2, (y1+y2)//2],
+                            # Map RelTR graph to UI json format
+                            for node in scene_graph['nodes']:
+                                frame_nodes[node['label']] = {
+                                    "type": node['label'],
+                                    "box": node['bbox'],
+                                    "center": [(node['bbox'][0]+node['bbox'][2])//2, (node['bbox'][1]+node['bbox'][3])//2],
                                     "velocity_kph": 0
                                 }
-                        
-                        # 2. DSG Engine Processing
-                        trigger_payload = None
-                        if st.session_state.dsg_engine and frame_nodes:
-                            events = st.session_state.dsg_engine.evaluate_frame(frame_nodes)
-                            if events:
-                                trigger_payload = events[0] # Take primary event
+                            
+                            # If RelTR found an edge, fire the payload natively!
+                            if scene_graph['edges']:
+                                edge = scene_graph['edges'][0]
+                                src_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['source'])
+                                tgt_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['target'])
                                 
-                                # --- EVENT-TRIGGERED OCR ---
-                                # Only run computationally heavy OCR when an action happens!
-                                try:
-                                    if 'ocr_reader' not in st.session_state:
-                                        import easyocr
-                                        with st.spinner("Loading OCR Model for the first time..."):
-                                            st.session_state.ocr_reader = easyocr.Reader(['en'], gpu=True)
-                                            
-                                    h, w = frame.shape[:2]
-                                    bottom_crop = frame[int(h*0.75):h, :] # Bottom 25% of screen
-                                    
-                                    ocr_result = st.session_state.ocr_reader.readtext(bottom_crop, detail=0, paragraph=True)
-                                    trigger_payload["scoreboard_ocr"] = " ".join(ocr_result)
-                                except Exception as e:
+                                trigger_payload = {
+                                    "event": edge['predicate'].upper(),
+                                    "primary_actor": frame_nodes[src_node['label']],
+                                    "secondary_actor": frame_nodes[tgt_node['label']]
+                                }
+                        
+                        else:
+                            # --- PHASE 1: YOLO + HEURISTIC ENGINE ---
+                            detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
+                            from perception.detector import draw_detections
+                            frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
+                            
+                            # Format DSG nodes
+                            for i, det in enumerate(detections):
+                                cls_name = det['label']
+                                
+                                # Map standard YOLO COCO classes to our custom Domain labels
+                                if cls_name == "sports ball": cls_name = "Ball"
+                                elif cls_name in ["baseball bat", "tennis racket"]: cls_name = "Bat"
+                                elif cls_name == "person": 
+                                    cls_name = "Player"
+                                    # --- HEURISTIC ROLE IDENTIFICATION ---
+                                    # Check if the person is wearing black (Umpire) or colored jersey (Team)
+                                    x1, y1, x2, y2 = map(int, det['box'])
+                                    crop = frame[max(0, y1):y2, max(0, x1):x2]
+                                    if crop.size > 0:
+                                        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+                                        mean_brightness = np.mean(hsv[:, :, 2])
+                                        if mean_brightness < 60:
+                                            cls_name = "Umpire"
+                                
+                                x1, y1, x2, y2 = map(int, det['box'])
+                                
+                                if cls_name not in frame_nodes:
+                                    frame_nodes[cls_name] = {
+                                        "type": cls_name,
+                                        "box": [x1, y1, x2, y2],
+                                        "center": [(x1+x2)//2, (y1+y2)//2],
+                                        "velocity_kph": 0
+                                    }
+                            
+                            # 2. DSG Engine Processing (Heuristic Math)
+                            if st.session_state.dsg_engine and frame_nodes:
+                                events = st.session_state.dsg_engine.evaluate_frame(frame_nodes)
+                                if events:
+                                    trigger_payload = events[0] # Take primary event
+
+                        # --- EVENT-TRIGGERED OCR ---
+                        # Only run computationally heavy OCR when an action happens!
+                        if trigger_payload:
+                            try:
+                                if 'ocr_reader' not in st.session_state:
+                                    import easyocr
+                                    with st.spinner("Loading OCR Model for the first time..."):
+                                        st.session_state.ocr_reader = easyocr.Reader(['en'], gpu=True)
+                                        
+                                h, w = frame.shape[:2]
+                                bottom_crop = frame[int(h*0.75):h, :] # Bottom 25% of screen
+                                
+                                ocr_result = st.session_state.ocr_reader.readtext(bottom_crop, detail=0, paragraph=True)
+                                trigger_payload["scoreboard_ocr"] = " ".join(ocr_result)
+                            except Exception as e:
                                     trigger_payload["scoreboard_ocr"] = f"OCR Error/Missing: {e}"
                                 
                                 st.session_state.events_log.append({
@@ -432,9 +476,15 @@ if selected_video:
                         ret, frame = cap.read()
                         
                     if ret:
-                        detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
-                        from perception.detector import draw_detections
-                        frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
+                        if st.session_state.vision_engine == "RelTR Transformer (Phase 3 Experimental)" or "RelTR" in st.session_state.vision_engine:
+                            # Use RelTR for paused frame preview
+                            scene_graph = st.session_state.reltr_generator.generate_scene_graph(frame)
+                            frame_annotated = st.session_state.reltr_generator.draw_scene_graph(frame.copy(), scene_graph)
+                        else:
+                            # Use YOLO for paused frame preview
+                            detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
+                            from perception.detector import draw_detections
+                            frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
                         raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                         analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
                         json_placeholder.json({"status": "Paused", "frame": st.session_state.current_frame})
