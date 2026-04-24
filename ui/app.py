@@ -229,9 +229,9 @@ if selected_video:
         # Player controls on top
         render_match_controls()
         
-        col_vid, col_data = st.columns([2, 1])
+        col_main, col_data = st.columns([2, 1])
         
-        with col_vid:
+        with col_main:
             col_raw, col_analysis = st.columns(2)
             with col_raw:
                 st.write("#### Live Stream (Raw)")
@@ -240,11 +240,13 @@ if selected_video:
                 st.write("#### YOLO Analysis (Vision)")
                 analysis_placeholder = st.empty()
                 
+            st.divider()
+            st.write("#### Live Commentary")
+            comm_placeholder = st.empty()
+                
         with col_data:
             st.write("#### DSG JSON Stream")
             json_placeholder = st.empty()
-            st.write("#### Live Commentary")
-            comm_placeholder = st.empty()
             
         if is_live or os.path.exists(video_path):
             try:
