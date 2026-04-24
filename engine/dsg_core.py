@@ -28,10 +28,22 @@ class DynamicSceneGraph:
 
         for trigger in self.config["triggers_to_watch"]:
             node_A_type = trigger["node_A_type"]
-            node_B_type = trigger["node_B_type"]
+            node_B_type = trigger.get("node_B_type")
             condition = trigger["condition"]
 
-            if node_A_type in nodes and node_B_type in nodes:
+            if condition == "PRESENCE":
+                if node_A_type in nodes:
+                    edge_id = f"{node_A_type}_PRESENCE"
+                    current_edges.add(edge_id)
+                    
+                    if edge_id not in self.previous_edges:
+                        payload = {
+                            "event": trigger["trigger_name"],
+                            "primary_actor": { "type": node_A_type, **nodes[node_A_type] }
+                        }
+                        triggered_events.append(payload)
+
+            elif node_A_type in nodes and node_B_type in nodes:
                 boxA = nodes[node_A_type]["box"]
                 boxB = nodes[node_B_type]["box"]
 

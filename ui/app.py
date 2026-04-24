@@ -343,11 +343,29 @@ if selected_video:
                         # 2. DSG Engine Processing
                         trigger_payload = None
                         if st.session_state.dsg_engine and frame_nodes:
-                            trigger_payload = st.session_state.dsg_engine.evaluate_frame(frame_nodes)
-                            if trigger_payload:
+                            events = st.session_state.dsg_engine.evaluate_frame(frame_nodes)
+                            if events:
+                                trigger_payload = events[0] # Take primary event
+                                
+                                # --- EVENT-TRIGGERED OCR ---
+                                # Only run computationally heavy OCR when an action happens!
+                                try:
+                                    if 'ocr_reader' not in st.session_state:
+                                        import easyocr
+                                        with st.spinner("Loading OCR Model for the first time..."):
+                                            st.session_state.ocr_reader = easyocr.Reader(['en'], gpu=True)
+                                            
+                                    h, w = frame.shape[:2]
+                                    bottom_crop = frame[int(h*0.75):h, :] # Bottom 25% of screen
+                                    
+                                    ocr_result = st.session_state.ocr_reader.readtext(bottom_crop, detail=0, paragraph=True)
+                                    trigger_payload["scoreboard_ocr"] = " ".join(ocr_result)
+                                except Exception as e:
+                                    trigger_payload["scoreboard_ocr"] = f"OCR Error/Missing: {e}"
+                                
                                 st.session_state.events_log.append({
                                     "timestamp": datetime.now().isoformat(),
-                                    "event": f"Trigger: {trigger_payload['condition']}"
+                                    "event": f"Trigger: {trigger_payload.get('event', 'Unknown')}"
                                 })
                             
                         # 3. Render

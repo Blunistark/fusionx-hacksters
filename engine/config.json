@@ -14,6 +14,12 @@
       "node_B_type": "Pitch",
       "condition": "INTERSECTS",
       "action": "FIRE_PAYLOAD"
+    },
+    {
+      "trigger_name": "PLAYER_VISIBLE",
+      "node_A_type": "Player",
+      "condition": "PRESENCE",
+      "action": "FIRE_PAYLOAD"
     }
   ]
 }
