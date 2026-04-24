@@ -284,8 +284,14 @@ if selected_video:
             comm_placeholder = st.empty()
                 
         with col_data:
-            st.write("#### DSG JSON Stream")
+            st.write("#### 📡 Intelligence Feed")
             json_placeholder = st.empty()
+            swarm_placeholder = st.empty()
+            
+        # --- PREPARE PERSISTENT PLACEHOLDERS (Anti-Ghosting) ---
+        with col_main:
+            st_narration = st.empty()
+            st_reflex_alert = st.empty()
             
         if is_live or os.path.exists(video_path):
             try:
@@ -448,39 +454,34 @@ if selected_video:
                         engine_key = f"{st.session_state.selected_domain.lower()}_engine"
                         if engine_key in st.session_state:
                             engine = st.session_state[engine_key]
-                            # Process frame through the domain engine
+                            # Process frame
                             frame_annotated = engine.process_frame(frame, st.session_state.current_frame)
                             
-                            # Update Dashboard Components
-                            with col_main:
-                                st_narration = st.empty()
-                                st_narration.markdown(f"""
-                                    <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:15px;'>
-                                        <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ {st.session_state.selected_domain.upper()} NARRATOR</b><br/>
-                                        <span style='font-size:1.1rem; color:white;'>"{engine.last_narration}"</span>
-                                    </div>
-                                """, unsafe_allow_html=True)
+                            # Update Persistent Narrative (Top)
+                            st_narration.markdown(f"""
+                                <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:15px;'>
+                                    <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ {st.session_state.selected_domain.upper()} NARRATOR</b><br/>
+                                    <span style='font-size:1.1rem; color:white;'>"{engine.last_narration}"</span>
+                                </div>
+                            """, unsafe_allow_html=True)
                             
-                            with col_data:
+                            # Update Agent Swarm (Sidebar)
+                            with swarm_placeholder.container():
                                 st.write(f"#### 🤖 {st.session_state.selected_domain} Agent Swarm")
-                                # Show thoughts if available
-                                if hasattr(engine, 'physics_thought'):
-                                    st.info(f"**Physical Analyst:** {engine.physics_thought}")
                                 st.error(f"**Consensus Verdict:** {engine.last_verdict}")
-                                
                                 if getattr(engine, 'instant_alert', False):
-                                    st.markdown("🚨 **CRITICAL EVENT DETECTED**", unsafe_allow_html=True)
+                                    st.warning("⚠️ **IMPACT REFLEX TRIGGERED**")
+
                         else:
-                            # Fallback if engine didn't load
                             frame_annotated = frame.copy()
                         # --- RENDER ---
                         raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                         analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        json_placeholder.json({"frame": st.session_state.current_frame, "nodes": frame_nodes, "verdict": getattr(st.session_state.traffic_engine, 'last_verdict', 'N/A')})
-                            
+                        json_placeholder.json({"frame": st.session_state.current_frame, "nodes": frame_nodes, "verdict": getattr(engine, 'last_verdict', 'N/A')})
+                        
                         st.session_state.current_frame += 1
                         import time
-                        time.sleep(1/fps)
+                        time.sleep(0.01)
                 else:
                     if is_screen_share:
                         sct_img = sct.grab(monitor)
@@ -503,19 +504,6 @@ if selected_video:
                         raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
                         analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
                         json_placeholder.json({"status": "Paused", "frame": st.session_state.current_frame})
-                        if st.session_state.commentary_history:
-                            html = "<div style='height: 250px; overflow-y: auto; display: flex; flex-direction: column-reverse; padding: 10px; border: 1px solid #333; border-radius: 5px; background: #0e1117;'>"
-                            for item in reversed(st.session_state.commentary_history[-15:]):
-                                time_str = item['timestamp'][11:19]
-                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; color: white; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
-                            html += "</div>"
-                            comm_placeholder.markdown(html, unsafe_allow_html=True)
-                            
-                            if hasattr(st.session_state.agent_pool, 'last_system_prompt'):
-                                prompt_placeholder.markdown(
-                                    f"**System Prompt:**\n```text\n{st.session_state.agent_pool.last_system_prompt}\n```\n\n"
-                                    f"**User Prompt:**\n```text\n{st.session_state.agent_pool.last_user_prompt}\n```"
-                                )
                 
                 if cap:
                     cap.release()
