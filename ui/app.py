@@ -105,20 +105,17 @@ def init_session_state():
     if 'selected_video' not in st.session_state:
         st.session_state.selected_video = None
 
-    # --- Initialize Domain Engines ---
-    if st.session_state.selected_domain == "Traffic" and 'traffic_engine' not in st.session_state:
-        try:
-            from agent_integration import FusionXEngine
-            st.session_state.traffic_engine = FusionXEngine(domain="Traffic")
-        except Exception as e:
-            st.error(f"Failed to load Traffic Engine: {e}")
-    
-    if st.session_state.selected_domain == "Cricket" and 'cricket_engine' not in st.session_state:
-        try:
-            from agent_integration import FusionXEngine
-            st.session_state.cricket_engine = FusionXEngine(domain="Cricket")
-        except Exception as e:
-            st.error(f"Failed to load Cricket Engine: {e}")
+    # --- Initialize Domain Engines (Global Setup) ---
+    domains_to_warmup = ["Traffic", "Cricket", "Security"]
+    for d in domains_to_warmup:
+        key = f"{d.lower()}_engine"
+        if key not in st.session_state:
+            try:
+                from agent_integration import FusionXEngine
+                st.session_state[key] = FusionXEngine(domain=d)
+            except Exception as e:
+                # Silently fail for other domains until needed
+                pass
 
 init_session_state()
 
