@@ -33,8 +33,13 @@ class OfficialRelTRRunner:
     To be run on your high-spec College PC.
     """
     def __init__(self, checkpoint_path, num_classes=151, num_rel_classes=51, device='cuda'):
-        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
-        print(f"Loading Official RelTR on {self.device}...")
+        if device == 'cuda' and not torch.cuda.is_available():
+            print("WARNING: CUDA requested but not available. Falling back to CPU.")
+            self.device = torch.device('cpu')
+        else:
+            self.device = torch.device(device)
+            
+        print(f"--- RUNNING ON DEVICE: {self.device} ---")
         
         # Build args that the official build_model expects
         class Args:
@@ -58,6 +63,8 @@ class OfficialRelTRRunner:
         args.lr_backbone = 1e-5
         args.masks = False
         args.dilation = False
+        args.dataset = 'vg' # Visual Genome
+        args.device = device
 
         # Instantiate official model
         self.model, self.criterion, self.postprocessors = build_model(args)
