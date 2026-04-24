@@ -148,9 +148,16 @@ with st.sidebar:
     
     # Video selection
     videos = get_available_videos()
+    videos.insert(0, "YouTube Link (Stream)")
+    videos.insert(0, "Screen Share (Live)")
+    videos.insert(0, "Live Webcam (0)")
     if videos:
         selected_video = st.selectbox("Select Video", videos)
         st.session_state.selected_video = selected_video
+        
+        youtube_url = None
+        if selected_video == "YouTube Link (Stream)":
+            youtube_url = st.text_input("Enter YouTube URL (e.g., https://youtu.be/...):")
     else:
         st.warning("No videos found in assets folder")
         selected_video = None
@@ -197,7 +204,16 @@ with st.sidebar:
 
 # Main content area
 if selected_video:
-    video_path = os.path.join(os.path.dirname(__file__), '..', 'assets', selected_video)
+    is_live_cam = selected_video == "Live Webcam (0)"
+    is_screen_share = selected_video == "Screen Share (Live)"
+    is_youtube = selected_video == "YouTube Link (Stream)"
+    is_live = is_live_cam or is_screen_share or is_youtube
+    
+    if is_youtube and not youtube_url:
+        st.info("👈 Please enter a YouTube URL in the sidebar to begin")
+        st.stop()
+    
+    video_path = 0 if is_live_cam else os.path.join(os.path.dirname(__file__), '..', 'assets', selected_video)
     
     # Tabs for different views
     tab1, tab2, tab3, tab4 = st.tabs([
@@ -230,27 +246,57 @@ if selected_video:
             st.write("#### Live Commentary")
             comm_placeholder = st.empty()
             
-        if os.path.exists(video_path):
+        if is_live or os.path.exists(video_path):
             try:
                 # Initialize YOLO locally for frontend
                 if 'yolo_detector' not in st.session_state:
                     from perception.detector import Detector
                     st.session_state.yolo_detector = Detector(backend='ultralytics', model_path='yolov8n.pt', device='cuda')
                     
-                cap = cv2.VideoCapture(video_path)
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
+                sct = None
+                cap = None
                 
-                # Hidden slider for seeking when paused
-                if not st.session_state.playing:
-                    frame_idx = st.slider("Seek Frame", 0, total_frames - 1, st.session_state.current_frame)
-                    st.session_state.current_frame = frame_idx
+                if is_screen_share:
+                    import mss
+                    sct = mss.mss()
+                    monitor = sct.monitors[1] # Capture primary monitor
+                elif is_youtube:
+                    import yt_dlp
+                    with st.spinner("Extracting stream from YouTube..."):
+                        ydl_opts = {'format': 'best[ext=mp4]/best', 'quiet': True}
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            info = ydl.extract_info(youtube_url, download=False)
+                            stream_url = info.get('url', youtube_url)
+                    cap = cv2.VideoCapture(stream_url)
+                else:
+                    cap = cv2.VideoCapture(video_path)
+                
+                if is_live:
+                    fps = 30
+                    st.session_state.playing = True
+                else:
+                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    fps = cap.get(cv2.CAP_PROP_FPS)
                     
-                cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame)
+                    # Hidden slider for seeking when paused
+                    if not st.session_state.playing:
+                        frame_idx = st.slider("Seek Frame", 0, total_frames - 1, st.session_state.current_frame)
+                        st.session_state.current_frame = frame_idx
+                        
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame)
                 
                 if st.session_state.playing:
-                    while st.session_state.playing and cap.isOpened():
-                        ret, frame = cap.read()
+                    while st.session_state.playing:
+                        if is_screen_share:
+                            sct_img = sct.grab(monitor)
+                            frame = np.array(sct_img)
+                            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                            ret = True
+                        else:
+                            if not cap.isOpened():
+                                break
+                            ret, frame = cap.read()
+                            
                         if not ret:
                             st.session_state.playing = False
                             st.rerun()
@@ -283,8 +329,8 @@ if selected_video:
                                 })
                             
                         # 3. Render
-                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_column_width=True)
-                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_column_width=True)
+                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
                         json_placeholder.json({"frame": st.session_state.current_frame, "dsg_trigger": trigger_payload, "nodes": frame_nodes})
                         
                         # 4. LLM Generation
@@ -308,18 +354,26 @@ if selected_video:
                         import time
                         time.sleep(1/fps)
                 else:
-                    ret, frame = cap.read()
+                    if is_screen_share:
+                        sct_img = sct.grab(monitor)
+                        frame = np.array(sct_img)
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                        ret = True
+                    else:
+                        ret, frame = cap.read()
+                        
                     if ret:
                         detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
                         from perception.detector import draw_detections
                         frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
-                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_column_width=True)
-                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_column_width=True)
+                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
                         json_placeholder.json({"status": "Paused", "frame": st.session_state.current_frame})
                         if st.session_state.commentary_history:
                             comm_placeholder.markdown(f"<div class='commentary-box'><strong>Live:</strong> {st.session_state.commentary_history[-1]['commentary']}</div>", unsafe_allow_html=True)
                 
-                cap.release()
+                if cap:
+                    cap.release()
             except Exception as e:
                 st.error(f"Error reading video: {e}")
         else:
