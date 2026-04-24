@@ -1,22 +1,21 @@
 import torch
 import cv2
 import numpy as np
-import argparse
-from PIL import Image
-import torchvision.transforms as T
 import sys
 import os
+import json
 
-# Ensure the official RelTR repo is in the path
-# (Assuming you run this from the same directory where 'models' exists, or add it to sys.path)
-# sys.path.append('/path/to/official/RelTR/repo')
+# Automatically add the current directory and parent directory to PYTHONPATH
+# This ensures it finds 'models' if you put this script inside the RelTR repo.
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
+sys.path.append(os.path.join(current_dir, '..'))
 
 try:
     from models import build_model
-except ImportError:
-    print("ERROR: Official RelTR 'models' module not found.")
-    print("Please ensure you are running this on the College PC inside the cloned RelTR repository,")
-    print("or add the RelTR repo to your PYTHONPATH.")
+except ImportError as e:
+    print(f"ERROR: Official RelTR 'models' module not found. Details: {e}")
+    print("Please ensure you placed this script INSIDE the cloned 'RelTR' folder.")
     sys.exit(1)
 
 # Standard ImageNet normalization used by ResNet backbone in RelTR
@@ -138,10 +137,28 @@ class OfficialRelTRRunner:
 
 if __name__ == "__main__":
     print("Official RelTR Runner Ready.")
-    # To run this standalone, download checkpoint0149.pth from the official repo 
-    # and uncomment the lines below:
+    import sys
     
-    # runner = OfficialRelTRRunner('checkpoint0149.pth')
-    # dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    # graph = runner.process_frame(dummy_frame)
-    # print(graph)
+    # Path to your downloaded weights
+    weights_file = 'checkpoint0149.pth'
+    
+    if not os.path.exists(weights_file):
+        print(f"Error: {weights_file} not found. Please download it from the official RelTR repo.")
+        sys.exit(1)
+        
+    runner = OfficialRelTRRunner(weights_file)
+    
+    # Read a test image (create a black dummy frame if none provided)
+    if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+        frame = cv2.imread(sys.argv[1])
+        print(f"Processing image: {sys.argv[1]}")
+    else:
+        print("No image provided. Testing with a dummy black frame...")
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+    # Run inference
+    graph = runner.process_frame(frame)
+    print("\n--- SCENE GRAPH OUTPUT ---")
+    print(json.dumps(graph, indent=2) if 'json' in sys.modules else graph)
+    print("--------------------------")
+    print("Test successful!")
