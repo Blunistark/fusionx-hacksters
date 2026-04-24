@@ -11,8 +11,29 @@ import yt_dlp
 from ultralytics import YOLO
 import sys
 
+import requests
+
 # Add RelTR directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'RelTR')))
+
+# --- NEW: Restored LLMAgentPool for app.py compatibility ---
+class LLMAgentPool:
+    def __init__(self):
+        self.active_agents = ["Ollama (Local)"]
+        self.OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+        self.OLLAMA_MODEL = "llama3"
+
+    def generate_commentary(self, event_data, domain_state, domain):
+        prompt = f"""
+        Domain: {domain}
+        State: {domain_state}
+        Event: {event_data}
+        Task: Provide a professional commentary based on this event. 1 sentence.
+        """
+        try:
+            res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
+            return res.json().get('response', 'Flow continues.')
+        except: return "Agent Offline."
 
 # --- DOMAIN INTELLIGENCE CONFIG ---
 DOMAIN_PROMPTS = {
