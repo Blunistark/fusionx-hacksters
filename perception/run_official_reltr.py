@@ -1,176 +1,158 @@
-import torch
 import cv2
-import numpy as np
-import sys
-import os
 import json
-from PIL import Image
+import requests
+import os
+import threading
+import torch
+import time
 import torchvision.transforms as T
+from PIL import Image
+from collections import deque
+from ultralytics import YOLO
 
-# Automatically add the current directory and parent directory to PYTHONPATH
-# This ensures it finds 'models' if you put this script inside the RelTR repo.
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
-sys.path.append(os.path.join(current_dir, '..'))
+# Add current dir to path to import official modules
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from models import build_model
 
-try:
-    from models import build_model
-except ImportError as e:
-    print(f"ERROR: Official RelTR 'models' module not found. Details: {e}")
-    print("Please ensure you placed this script INSIDE the cloned 'RelTR' folder.")
-    sys.exit(1)
-
-# Standard ImageNet normalization used by ResNet backbone in RelTR
-transform = T.Compose([
-    T.Resize(800),
-    T.ToTensor(),
-    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
-
-class OfficialRelTRRunner:
-    """
-    Wrapper for the OFFICIAL Stanford RelTR architecture.
-    To be run on your high-spec College PC.
-    """
-    def __init__(self, checkpoint_path, num_classes=151, num_rel_classes=51, device='cuda'):
-        if device == 'cuda' and not torch.cuda.is_available():
-            print("WARNING: CUDA requested but not available. Falling back to CPU.")
-            self.device = torch.device('cpu')
-        else:
-            self.device = torch.device(device)
-            
-        print(f"--- RUNNING ON DEVICE: {self.device} ---")
+class FusionXUltraMaster:
+    def __init__(self):
+        print("--- INITIALIZING ULTRA MASTER (Integrated for UI) ---")
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.yolo_a = YOLO('yolov8n.pt')
+        self.yolo_b = YOLO('yolov10n.pt')
+        self.frame_count = 0
         
-        # Build args that the official build_model expects
+        # Memory & Logic
+        self.short_term_history = deque(maxlen=150)
+        self.last_swarm_verdict = "System Armed"
+        self.last_narration = "Analyzing Session..."
+        self.OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+        self.OLLAMA_MODEL = "llama3"
+        self.is_thinking = False
+        self.is_narrating = False
+        self.instant_alert = False
+        
+        # Logging & Evidence (Linked to UI)
+        self.log_file = "FusionX_Intelligence.json"
+        self.evidence_dir = "accident_evidence"
+        if not os.path.exists(self.evidence_dir): os.makedirs(self.evidence_dir)
+        self.intelligence_logs = []
+
+        # RelTR Radar Setup
         class Args:
-            pass
-        args = Args()
-        args.backbone = 'resnet50'
-        args.position_embedding = 'sine'
-        args.hidden_dim = 256
-        args.dropout = 0.1
-        args.nheads = 8
-        args.dim_feedforward = 2048
-        args.enc_layers = 6
-        args.dec_layers = 6
-        args.rel_enc_layers = 1
-        args.rel_dec_layers = 1
-        args.num_entities = 100
-        args.num_triplets = 200
-        args.num_classes = num_classes
-        args.num_rel_classes = num_rel_classes
-        args.return_interm_layers = False
-        args.lr_backbone = 1e-5
-        args.masks = False
-        args.dilation = False
-        args.dataset = 'vg' # Visual Genome
-        args.device = device
+            backbone = 'resnet50'; dilation = False; position_embedding = 'sine'; 
+            enc_layers = 6; dec_layers = 6; dim_feedforward = 2048; hidden_dim = 256; 
+            dropout = 0.1; nheads = 8; num_entities = 100; num_triplets = 200; 
+            aux_loss = False; set_cost_class = 1; set_cost_bbox = 5; set_cost_giou = 2; 
+            set_cost_obj_class = 1; set_cost_rel_class = 1; bbox_loss_coef = 5; 
+            giou_loss_coef = 2; rel_loss_coef = 1; eos_coef = 0.1; entity_loss_coef = 1;
+            dataset = 'vg'; device = 'cuda' if torch.cuda.is_available() else 'cpu';
+            lr_backbone = 0; masks = False; return_interm_layers = False; 
+            frozen_weights = None; pre_norm = False; set_iou_threshold = 0.5;
+        self.reltr, _, _ = build_model(Args())
+        self.reltr.to(self.device)
+        self.has_reltr = False
+        if os.path.exists('ckp/checkpoint0149.pth'):
+            checkpoint = torch.load('ckp/checkpoint0149.pth', map_location=self.device, weights_only=False)
+            self.reltr.load_state_dict(checkpoint['model'])
+            self.reltr.eval(); self.has_reltr = True
+            
+        self.transform = T.Compose([T.Resize(800), T.ToTensor(), T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        self.REL_CLASSES = ["bg", "above", "across", "against", "along", "and", "at", "attached to", "behind", "belonging to", "between", "carrying", "covered in", "covering", "eating", "flying in", "for", "from", "gazing at", "hanging from", "has", "holding", "in", "in front of", "incorporating", "looking at", "lying on", "near", "of", "on", "on back of", "over", "painted on", "parked on", "part of", "playing", "riding", "says", "sitting on", "standing on", "street", "through", "to", "toward", "under", "using", "walking in", "walking on", "watching", "wearing", "with"]
 
-        # Instantiate official model
-        self.model, self.criterion, self.postprocessors = build_model(args)
-        self.model.to(self.device)
-        self.model.eval()
+    def save_state(self, frame, detections, hazards):
+        """Saves everything for the Streamlit UI to read."""
+        timestamp = int(time.time())
+        img_name = f"evidence_{self.frame_count}.jpg"
+        img_path = os.path.join(self.evidence_dir, img_name)
+        if self.instant_alert: cv2.imwrite(img_path, frame)
         
-        # Load the massive 300MB+ official weights
-        if os.path.exists(checkpoint_path):
-            checkpoint = torch.load(checkpoint_path, map_location=self.device)
-            self.model.load_state_dict(checkpoint['model'])
-            print("Successfully loaded official RelTR weights!")
-        else:
-            print(f"WARNING: Weights file not found at {checkpoint_path}")
+        log_entry = {
+            "timestamp": time.ctime(),
+            "frame": self.frame_count,
+            "last_narration": self.last_narration,
+            "swarm_verdict": self.last_swarm_verdict,
+            "objs": [d['label'] for d in detections],
+            "hazards": hazards,
+            "is_accident": self.instant_alert,
+            "evidence_img": img_path if self.instant_alert else None
+        }
+        self.intelligence_logs.append(log_entry)
+        with open(self.log_file, "w") as f: json.dump(self.intelligence_logs[-50:], f, indent=4)
 
-        # VG Vocabularies
-        self.CLASSES = ["__background__", "car", "person", "truck", "motorcycle", "traffic_light", "ball", "bat", "player"] # Update with your 150 classes
-        self.REL_CLASSES = ["__background__", "near", "touching", "driving", "holding", "standing_next_to", "colliding_with"] # Update with your 50 relations
+    def ask_swarm_async(self, frame_copy, detections, rels, hazards):
+        self.is_thinking = True
+        prompt = f"SWARM TASK: Analyze Objs={detections}, Rels={rels}, Hazards={hazards}. 1 short verdict."
+        try:
+            res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=5)
+            self.last_swarm_verdict = res.json().get('response', 'Stable.')
+            self.save_state(frame_copy, detections, hazards)
+        except: pass
+        self.is_thinking = False
 
-    def process_frame(self, frame_bgr):
-        # Convert OpenCV BGR to PIL Image
-        img_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(img_rgb)
-        
-        # Transform and add batch dimension
-        tensor_img = transform(pil_image).unsqueeze(0).to(self.device)
-        
-        with torch.no_grad():
-            outputs = self.model(tensor_img)
+    def ask_narrator_async(self):
+        self.is_narrating = True
+        prompt = f"NARRATOR: Summarize the last 5s into a 1-sentence traffic story: {self.intelligence_logs[-5:]}"
+        try:
+            res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
+            self.last_narration = res.json().get('response', 'Monitoring flow.')
+        except: pass
+        self.is_narrating = False
+
+    def run(self, video_path):
+        cap = cv2.VideoCapture(video_path)
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret: break
             
-            # The official RelTR outputs logit tensors
-            pred_logits = outputs['pred_logits'][0]
-            pred_boxes = outputs['pred_boxes'][0]
-            sub_logits = outputs['sub_logits'][0]
-            obj_logits = outputs['obj_logits'][0]
-            sub_boxes = outputs['sub_boxes'][0]
-            obj_boxes = outputs['obj_boxes'][0]
-            rel_logits = outputs['rel_logits'][0]
+            res_a = self.yolo_a(frame, verbose=False)[0]
+            res_b = self.yolo_b(frame, verbose=False)[0]
+            detections = []
+            for r in [res_a, res_b]:
+                for box in r.boxes:
+                    if box.conf[0] > 0.45:
+                        detections.append({"label": r.names[int(box.cls[0])], "bbox": box.xyxy[0].tolist()})
+
+            self.instant_alert = False
+            hazards = []
+            if self.frame_count % 30 == 0:
+                current_rels = []
+                if self.has_reltr:
+                    img = self.transform(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))).unsqueeze(0).to(self.device)
+                    with torch.no_grad():
+                        out = self.reltr(img)
+                        conf, labels = out['rel_logits'].softmax(-1)[0, :, :-1].max(-1)
+                        for i in torch.where(conf > 0.35)[0]: current_rels.append(self.REL_CLASSES[labels[i].item()])
+                
+                for i, d1 in enumerate(detections):
+                    for j, d2 in enumerate(detections):
+                        if i >= j: continue
+                        b1, b2 = d1['bbox'], d2['bbox']
+                        if not (b1[2] < b2[0] or b1[0] > b2[2] or b1[3] < b2[1] or b1[1] > b2[3]):
+                            if abs(b1[3] - b2[3]) < 45:
+                                self.instant_alert = True
+                                hazards.append(f"{d1['label']} IMPACT {d2['label']}")
+
+                if not self.is_thinking:
+                    threading.Thread(target=self.ask_swarm_async, args=(frame.copy(), detections, current_rels, hazards)).start()
+
+            if self.frame_count % 150 == 0 and not self.is_narrating and self.intelligence_logs:
+                threading.Thread(target=self.ask_narrator_async).start()
+
+            # Dashboard Visuals
+            cv2.rectangle(frame, (0, 0), (frame.shape[1], 110), (10, 10, 10), -1)
+            cv2.putText(frame, f"NARRATOR: {self.last_narration[:90]}", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            color = (0, 0, 255) if self.instant_alert else (0, 255, 0)
+            cv2.putText(frame, f"SWARM: {self.last_swarm_verdict[:90]}", (20, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             
-            prob_rel = rel_logits.softmax(-1)
-            conf_rel, labels_rel = prob_rel.max(-1)
+            if self.instant_alert: cv2.rectangle(frame, (0,0), (frame.shape[1], frame.shape[0]), (0,0,255), 10)
+            cv2.imshow("FusionX ULTRA MASTER Dashboard", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'): break
+            self.frame_count += 1
             
-            # Extract high-confidence relationships
-            scene_graph = {"nodes": [], "edges": []}
-            
-            # Use top 2 predictions for demonstration
-            h, w = frame_bgr.shape[:2]
-            
-            valid_rels = [i for i in range(len(conf_rel)) if conf_rel[i] > 0.3 and labels_rel[i] != 0]
-            
-            if len(valid_rels) > 0:
-                for idx in valid_rels[:2]:  # Limit to top 2 for clean UI
-                    rel_class = self.REL_CLASSES[labels_rel[idx].item() % len(self.REL_CLASSES)]
-                    
-                    # Official RelTR outputs Subject and Object boxes separately in the relation head
-                    sub_cx, sub_cy, sub_w, sub_h = sub_boxes[idx].tolist()
-                    obj_cx, obj_cy, obj_w, obj_h = obj_boxes[idx].tolist()
-                    
-                    # Denormalize
-                    sx1, sy1, sx2, sy2 = int((sub_cx-sub_w/2)*w), int((sub_cy-sub_h/2)*h), int((sub_cx+sub_w/2)*w), int((sub_cy+sub_h/2)*h)
-                    ox1, oy1, ox2, oy2 = int((obj_cx-obj_w/2)*w), int((obj_cy-obj_h/2)*h), int((obj_cx+obj_w/2)*w), int((obj_cy+obj_h/2)*h)
-                    
-                    # Assume Subject is index 0 and Object is index 1 for this pair
-                    sub_id = len(scene_graph["nodes"])
-                    scene_graph["nodes"].append({
-                        "id": sub_id, "label": "Subject", "bbox": [sx1, sy1, sx2, sy2], "confidence": 1.0
-                    })
-                    
-                    obj_id = len(scene_graph["nodes"])
-                    scene_graph["nodes"].append({
-                        "id": obj_id, "label": "Object", "bbox": [ox1, oy1, ox2, oy2], "confidence": 1.0
-                    })
-                    
-                    scene_graph["edges"].append({
-                        "source": sub_id, "target": obj_id, "predicate": rel_class, "confidence": conf_rel[idx].item()
-                    })
-                    
-            print(f"Extracted {len(scene_graph['edges'])} relations from Official Model!")
-            return scene_graph
+        cap.release(); cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    print("Official RelTR Runner Ready.")
-    import sys
-    
-    # Path to your downloaded weights
-    weights_file = 'checkpoint0149.pth'
-    if not os.path.exists(weights_file):
-        weights_file = os.path.join('ckp', 'checkpoint0149.pth')
-    
-    if not os.path.exists(weights_file):
-        print(f"Error: checkpoint0149.pth not found in root or ckp/ folder.")
-        print("Please ensure you downloaded it from the official RelTR repo.")
-        sys.exit(1)
-        
-    runner = OfficialRelTRRunner(weights_file)
-    
-    # Read a test image (create a black dummy frame if none provided)
-    if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
-        frame = cv2.imread(sys.argv[1])
-        print(f"Processing image: {sys.argv[1]}")
-    else:
-        print("No image provided. Testing with a dummy black frame...")
-        frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        
-    # Run inference
-    graph = runner.process_frame(frame)
-    print("\n--- SCENE GRAPH OUTPUT ---")
-    print(json.dumps(graph, indent=2) if 'json' in sys.modules else graph)
-    print("--------------------------")
-    print("Test successful!")
+    runner = FusionXUltraMaster()
+    runner.run("../assets/accident-1.mp4")
