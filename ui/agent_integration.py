@@ -90,8 +90,12 @@ source_url = st.sidebar.text_input("Enter URL/Path", "../assets/accident-1.mp4")
 if st.sidebar.button("🚀 START FUSION ENGINE"):
     st.info("Initializing GPU Engine...")
     
-    if source_type == "YouTube Link":
-        final_url = get_youtube_url(source_url)
+    if source_type == "YouTube Link" and source_url.startswith("http"):
+        try:
+            final_url = get_youtube_url(source_url)
+        except Exception as e:
+            st.error(f"YouTube Error: {e}")
+            st.stop()
     else:
         final_url = source_url
 
