@@ -230,12 +230,14 @@ Provide 1-2 sentences of engaging live analysis that flows naturally from the re
         
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            model_name=config['model'],
-            system_instruction=system_prompt
+            model_name=config['model']
         )
         
+        # Prepend system prompt to user prompt for compatibility with older SDKs
+        combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+        
         response = model.generate_content(
-            user_prompt,
+            combined_prompt,
             generation_config=genai.types.GenerationConfig(
                 max_output_tokens=config['max_tokens'],
                 temperature=config['temperature']
