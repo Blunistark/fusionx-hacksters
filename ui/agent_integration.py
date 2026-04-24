@@ -37,9 +37,9 @@ class LLMAgentPool:
                 "max_tokens": 150,
                 "temperature": 0.7
             },
-            "Gemini 3 Flash": {
+            "Gemini 2.5 Flash": {
                 "provider": "google",
-                "model": "gemini-3-flash",
+                "model": "gemini-2.5-flash",
                 "api_key_env": "GOOGLE_API_KEY",
                 "max_tokens": 150,
                 "temperature": 0.7
