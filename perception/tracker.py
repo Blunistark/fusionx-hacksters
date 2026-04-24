@@ -103,5 +103,5 @@ class PerceptionLayer:
 
 if __name__ == "__main__":
     # Ensure you have 'clip1.mp4' in this directory or provide the absolute path.
-    tracker = PerceptionLayer(video_source='../assets/data/clip1.mp4')
+    tracker = PerceptionLayer(video_source='../assets/data/clip1.mp4', device='cuda')
     tracker.run()
