@@ -76,6 +76,7 @@ class LLMAgentPool:
         
         # Try all active agents
         all_commentaries = []
+        errors = []
         for agent in self.active_agents:
             try:
                 commentary = self._call_agent(agent, system_prompt, user_prompt)
@@ -84,13 +85,15 @@ class LLMAgentPool:
                     all_commentaries.append(f"**{agent.upper()}**: {commentary}")
             except Exception as e:
                 logger.warning(f"Agent {agent} failed: {e}")
+                errors.append(f"**{agent.upper()} ERROR**: {str(e)}")
                 
         if all_commentaries:
             return "<br><br>".join(all_commentaries)
         
         # Fallback to default commentary if all agents fail
         fallback = self._generate_default_commentary(event_description, domain_state, domain)
-        return f"**[OFFLINE FALLBACK]**: {fallback}"
+        error_string = "<br>".join(errors) if errors else "No active agents selected."
+        return f"**[OFFLINE FALLBACK]**: {fallback}<br><br><span style='color:#ff4b4b;font-size:0.8em;'>API Issues Detected:<br>{error_string}</span>"
     
     def _build_system_prompt(self, domain_state: Dict, domain: str) -> str:
         """Build the system prompt for the LLM with domain-specific context"""
@@ -172,83 +175,74 @@ Provide 1-2 sentences of engaging live analysis that flows naturally from the re
     def _call_agent(self, agent_name: str, system_prompt: str, user_prompt: str) -> Optional[str]:
         """
         Call the specified agent to generate commentary.
-        This is a template method that should be implemented with actual API calls.
         """
         
         config = self.agent_configs.get(agent_name)
         if not config:
-            return None
+            raise ValueError(f"No config found for {agent_name}")
         
         provider = config.get('provider')
         
-        try:
-            if provider == "openai":
-                return self._call_openai(agent_name, config, system_prompt, user_prompt)
-            elif provider == "google":
-                return self._call_gemini(agent_name, config, system_prompt, user_prompt)
-            elif provider == "anthropic":
-                return self._call_claude(agent_name, config, system_prompt, user_prompt)
-        except Exception as e:
-            logger.error(f"Error calling {agent_name}: {e}")
-            return None
+        if provider == "openai":
+            return self._call_openai(agent_name, config, system_prompt, user_prompt)
+        elif provider == "google":
+            return self._call_gemini(agent_name, config, system_prompt, user_prompt)
+        elif provider == "anthropic":
+            return self._call_claude(agent_name, config, system_prompt, user_prompt)
+        else:
+            raise ValueError(f"Unknown provider {provider}")
     
     def _call_openai(self, agent_name: str, config: Dict, system_prompt: str, user_prompt: str) -> Optional[str]:
         """Call OpenAI API"""
         try:
             import openai
+        except ImportError:
+            raise ImportError("OpenAI package not installed. Run: pip install openai")
             
-            api_key = os.getenv(config['api_key_env'])
-            if not api_key:
-                logger.warning(f"API key not found for {agent_name}")
-                return None
-            
-            client = openai.OpenAI(api_key=api_key)
-            
-            response = client.chat.completions.create(
-                model=config['model'],
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                max_tokens=config['max_tokens'],
-                temperature=config['temperature']
-            )
-            
-            return response.choices[0].message.content
+        api_key = os.getenv(config['api_key_env'])
+        if not api_key:
+            raise ValueError(f"API key missing. Add {config['api_key_env']} to your .env file.")
         
-        except Exception as e:
-            logger.error(f"OpenAI API error: {e}")
-            return None
+        client = openai.OpenAI(api_key=api_key)
+        
+        response = client.chat.completions.create(
+            model=config['model'],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=config['max_tokens'],
+            temperature=config['temperature']
+        )
+        
+        return response.choices[0].message.content
     
     def _call_gemini(self, agent_name: str, config: Dict, system_prompt: str, user_prompt: str) -> Optional[str]:
         """Call Google Gemini API"""
         try:
             import google.generativeai as genai
+        except ImportError:
+            raise ImportError("Google GenerativeAI package not installed. Run: pip install google-generativeai")
             
-            api_key = os.getenv(config['api_key_env'])
-            if not api_key:
-                logger.warning(f"API key not found for {agent_name}")
-                return None
-            
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(
-                model_name=config['model'],
-                system_instruction=system_prompt
-            )
-            
-            response = model.generate_content(
-                user_prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=config['max_tokens'],
-                    temperature=config['temperature']
-                )
-            )
-            
-            return response.text
+        api_key = os.getenv(config['api_key_env'])
+        if not api_key:
+            raise ValueError(f"API key missing. Add {config['api_key_env']} to your .env file.")
         
-        except Exception as e:
-            logger.error(f"Gemini API error: {e}")
-            return None
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name=config['model'],
+            system_instruction=system_prompt
+        )
+        
+        response = model.generate_content(
+            user_prompt,
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=config['max_tokens'],
+                temperature=config['temperature']
+            )
+        )
+        
+        return response.text
     
     def _call_claude(self, agent_name: str, config: Dict, system_prompt: str, user_prompt: str) -> Optional[str]:
         """Call Anthropic Claude API"""
