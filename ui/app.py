@@ -312,13 +312,33 @@ if selected_video:
                         frame_nodes = {}
                         for i, det in enumerate(detections):
                             cls_name = det['label']
+                            
+                            # Map standard YOLO COCO classes to our custom Domain labels
+                            if cls_name == "sports ball": cls_name = "Ball"
+                            elif cls_name in ["baseball bat", "tennis racket"]: cls_name = "Bat"
+                            elif cls_name == "person": 
+                                cls_name = "Player"
+                                # --- HEURISTIC ROLE IDENTIFICATION ---
+                                # Check if the person is wearing black (Umpire) or colored jersey (Team)
+                                x1, y1, x2, y2 = map(int, det['box'])
+                                crop = frame[max(0, y1):y2, max(0, x1):x2]
+                                if crop.size > 0:
+                                    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+                                    # Calculate average brightness/value (0-255, where black is < 50)
+                                    mean_brightness = np.mean(hsv[:, :, 2])
+                                    if mean_brightness < 60:
+                                        cls_name = "Umpire"
+                            
                             x1, y1, x2, y2 = map(int, det['box'])
-                            frame_nodes[f"{cls_name}_{i}"] = {
-                                "type": cls_name,
-                                "box": [x1, y1, x2, y2],
-                                "center": [(x1+x2)//2, (y1+y2)//2],
-                                "velocity_kph": 0
-                            }
+                            
+                            # For MVP DSG, we only track the primary instance of each class
+                            if cls_name not in frame_nodes:
+                                frame_nodes[cls_name] = {
+                                    "type": cls_name,
+                                    "box": [x1, y1, x2, y2],
+                                    "center": [(x1+x2)//2, (y1+y2)//2],
+                                    "velocity_kph": 0
+                                }
                         
                         # 2. DSG Engine Processing
                         trigger_payload = None
