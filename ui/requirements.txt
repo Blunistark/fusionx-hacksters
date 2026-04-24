@@ -37,3 +37,7 @@ flake8>=6.0.0
 
 # Optional: For better performance
 Pillow>=9.0.0
+
+# Live Streaming & Screen Capture
+mss>=9.0.0
+yt-dlp>=2024.3.10
