@@ -404,7 +404,7 @@ if selected_video:
                             html = "<div style='height: 250px; overflow-y: auto; display: flex; flex-direction: column-reverse; padding: 10px; border: 1px solid #333; border-radius: 5px; background: #0e1117;'>"
                             for item in reversed(st.session_state.commentary_history[-15:]):
                                 time_str = item['timestamp'][11:19]
-                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
+                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; color: white; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
                             html += "</div>"
                             comm_placeholder.markdown(html, unsafe_allow_html=True)
                             
@@ -438,7 +438,7 @@ if selected_video:
                             html = "<div style='height: 250px; overflow-y: auto; display: flex; flex-direction: column-reverse; padding: 10px; border: 1px solid #333; border-radius: 5px; background: #0e1117;'>"
                             for item in reversed(st.session_state.commentary_history[-15:]):
                                 time_str = item['timestamp'][11:19]
-                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
+                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; color: white; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
                             html += "</div>"
                             comm_placeholder.markdown(html, unsafe_allow_html=True)
                             

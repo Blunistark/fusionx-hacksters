@@ -74,19 +74,23 @@ class LLMAgentPool:
         self.last_system_prompt = system_prompt
         self.last_user_prompt = user_prompt
         
-        # Try primary agent first
+        # Try all active agents
+        all_commentaries = []
         for agent in self.active_agents:
             try:
                 commentary = self._call_agent(agent, system_prompt, user_prompt)
                 if commentary:
                     self._save_commentary(agent, event_description, commentary)
-                    return commentary
+                    all_commentaries.append(f"**{agent.upper()}**: {commentary}")
             except Exception as e:
                 logger.warning(f"Agent {agent} failed: {e}")
-                continue
+                
+        if all_commentaries:
+            return "<br><br>".join(all_commentaries)
         
         # Fallback to default commentary if all agents fail
-        return self._generate_default_commentary(event_description, domain_state, domain)
+        fallback = self._generate_default_commentary(event_description, domain_state, domain)
+        return f"**[OFFLINE FALLBACK]**: {fallback}"
     
     def _build_system_prompt(self, domain_state: Dict, domain: str) -> str:
         """Build the system prompt for the LLM with domain-specific context"""
@@ -134,15 +138,24 @@ Generate content that sounds like a live {domain} monitoring feed output."""
 
     
     def _build_user_prompt(self, event_description: str, domain_state: Dict, domain: str) -> str:
-        """Build the user prompt with the current event"""
+        """Build the user prompt with the current event and historical context"""
         
-        return f"""Based on the {domain} state above, provide live report/commentary for this event:
+        # Build historical context string
+        recent_history = ""
+        if len(self.commentary_history) > 0:
+            recent_history = "Recent Match History:\n"
+            for item in self.commentary_history[-4:]:
+                recent_history += f"- {item['commentary']}\n"
+        
+        return f"""Based on the {domain} state above, provide live report/commentary for this new event:
 
-EVENT: {event_description}
+{recent_history}
+
+NEW EVENT: {event_description}
 
 Current Phase: {domain_state.get('phase')}
 
-Provide 1-2 sentences of engaging live analysis:"""
+Provide 1-2 sentences of engaging live analysis that flows naturally from the recent history:"""
     
     def _calculate_run_rate(self, match_state: Dict) -> float:
         """Calculate current run rate"""
