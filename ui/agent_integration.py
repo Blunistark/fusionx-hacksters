@@ -272,7 +272,10 @@ Provide 1-2 sentences of engaging live analysis:"""
                 "SHOT_PLAYED": "And the batsman plays a shot! {striker} connects well with the ball.",
                 "BALL_PITCHED": "The ball has pitched on good length. {bowler} gets good pace and line.",
                 "CATCH": "And that's caught! Brilliant fielding gets {striker} out.",
-                "WICKET": "And that's the wicket! {bowler} strikes."
+                "WICKET": "And that's the wicket! {bowler} strikes.",
+                "PLAYER_VISIBLE": "{striker} is visible on the field. The match continues.",
+                "LBW_APPEAL": "Huge appeal for LBW from {bowler}! The umpire is having a long look...",
+                "RUN_OUT_ATTEMPT": "Direct hit at the stumps! This is going to be a very close call."
             }
         elif domain == "Security":
             templates = {
@@ -283,8 +286,9 @@ Provide 1-2 sentences of engaging live analysis:"""
         elif domain == "Traffic":
             templates = {
                 "CONGESTION": "Traffic buildup detected at {intersection}. Flow rate decreasing.",
-                "ACCIDENT": "Incident detected! Emergency services may be required at {intersection}.",
-                "SPEEDING": "High-speed vehicle detected. Automated log recorded."
+                "ACCIDENT": "Collision detected! Emergency services may be required at {intersection}.",
+                "SPEEDING": "High-speed vehicle detected. Automated log recorded.",
+                "VEHICLE_VISIBLE": "Vehicle entered the {intersection} monitoring zone."
             }
         else:
             templates = {}
