@@ -317,7 +317,10 @@ class EventProcessor:
             'BALL_PITCHED': f"The ball has been delivered and pitched. Ball velocity: {primary.get('velocity_kph')} kph.",
             'BALL_CAUGHT': f"The ball has been caught by the fielder.",
             'RUN_SCORED': f"A run has been completed between the wickets.",
-            'WICKET_FALLEN': f"The batsman is out! The bowler gets a wicket."
+            'WICKET_FALLEN': f"The batsman is out! The bowler gets a wicket.",
+            'ACCIDENT': f"A collision or accident has been detected involving {primary.get('type')} and {secondary.get('type')}.",
+            'CONGESTION_DETECTED': f"Heavy traffic congestion detected. Multiple vehicles are in close proximity.",
+            'VEHICLE_VISIBLE': f"Vehicle detected in the monitoring zone."
         }
         
         return descriptions.get(event_type, f"Event: {event_type} - {primary.get('type')} interacts with {secondary.get('type')}")
