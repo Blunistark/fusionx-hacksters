@@ -422,12 +422,12 @@ if selected_video:
                                 ocr_result = st.session_state.ocr_reader.readtext(bottom_crop, detail=0, paragraph=True)
                                 trigger_payload["scoreboard_ocr"] = " ".join(ocr_result)
                             except Exception as e:
-                                    trigger_payload["scoreboard_ocr"] = f"OCR Error/Missing: {e}"
-                                
-                                st.session_state.events_log.append({
-                                    "timestamp": datetime.now().isoformat(),
-                                    "event": f"Trigger: {trigger_payload.get('event', 'Unknown')}"
-                                })
+                                trigger_payload["scoreboard_ocr"] = f"OCR Error/Missing: {e}"
+                            
+                            st.session_state.events_log.append({
+                                "timestamp": datetime.now().isoformat(),
+                                "event": f"Trigger: {trigger_payload.get('event', 'Unknown')}"
+                            })
                             
                         # 3. Render
                         raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
