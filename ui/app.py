@@ -210,59 +210,120 @@ if selected_video:
     with tab1:
         st.subheader(f"Video: {selected_video}")
         
-        col_video, col_commentary = st.columns([2, 1])
+        # Player controls on top
+        render_match_controls()
         
-        with col_video:
-            # Video display section
-            st.write("#### Live Video Feed")
-            video_placeholder = st.empty()
+        col_vid, col_data = st.columns([2, 1])
+        
+        with col_vid:
+            col_raw, col_analysis = st.columns(2)
+            with col_raw:
+                st.write("#### Live Stream (Raw)")
+                raw_placeholder = st.empty()
+            with col_analysis:
+                st.write("#### YOLO Analysis (Vision)")
+                analysis_placeholder = st.empty()
+                
+        with col_data:
+            st.write("#### DSG JSON Stream")
+            json_placeholder = st.empty()
+            st.write("#### Live Commentary")
+            comm_placeholder = st.empty()
             
-            # Video player controls
-            render_match_controls()
-            
-            # Display video frame or placeholder
-            if os.path.exists(video_path):
-                try:
-                    cap = cv2.VideoCapture(video_path)
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    fps = cap.get(cv2.CAP_PROP_FPS)
+        if os.path.exists(video_path):
+            try:
+                # Initialize YOLO locally for frontend
+                if 'yolo_detector' not in st.session_state:
+                    from perception.detector import Detector
+                    st.session_state.yolo_detector = Detector(backend='ultralytics', model_path='yolov8n.pt', device='cuda')
                     
-                    # Frame slider
-                    frame_idx = st.slider(
-                        "Frame",
-                        0,
-                        total_frames - 1,
-                        st.session_state.current_frame
-                    )
+                cap = cv2.VideoCapture(video_path)
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                
+                # Hidden slider for seeking when paused
+                if not st.session_state.playing:
+                    frame_idx = st.slider("Seek Frame", 0, total_frames - 1, st.session_state.current_frame)
                     st.session_state.current_frame = frame_idx
                     
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                    ret, frame = cap.read()
-                    
-                    if ret:
-                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        video_placeholder.image(frame_rgb, use_column_width=True)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame)
+                
+                if st.session_state.playing:
+                    while st.session_state.playing and cap.isOpened():
+                        ret, frame = cap.read()
+                        if not ret:
+                            st.session_state.playing = False
+                            st.rerun()
+                            
+                        # 1. Vision Analysis
+                        detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
+                        from perception.detector import draw_detections
+                        frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
                         
-                        # Display frame info
-                        st.caption(f"Frame {frame_idx + 1} / {total_frames} | FPS: {fps:.1f}")
-                    
-                    cap.release()
-                except Exception as e:
-                    st.error(f"Error reading video: {e}")
-            else:
-                st.warning(f"Video file not found: {video_path}")
-        
-        with col_commentary:
-            st.write("#### Live Commentary")
-            
-            # Current event display
-            if st.session_state.events_log:
-                latest_event = st.session_state.events_log[-1]
-                st.markdown("**Last Event:**")
-                st.info(f"🎯 {latest_event.get('event', 'N/A')}")
-            
-            # Live commentary display
-            render_llm_commentary(st.session_state.commentary_history)
+                        # Format DSG nodes
+                        frame_nodes = {}
+                        for i, det in enumerate(detections):
+                            cls_name = det['label']
+                            x1, y1, x2, y2 = map(int, det['box'])
+                            frame_nodes[f"{cls_name}_{i}"] = {
+                                "type": cls_name,
+                                "box": [x1, y1, x2, y2],
+                                "center": [(x1+x2)//2, (y1+y2)//2],
+                                "velocity_kph": 0
+                            }
+                        
+                        # 2. DSG Engine Processing
+                        trigger_payload = None
+                        if st.session_state.dsg_engine and frame_nodes:
+                            trigger_payload = st.session_state.dsg_engine.evaluate_frame(frame_nodes)
+                            if trigger_payload:
+                                st.session_state.events_log.append({
+                                    "timestamp": datetime.now().isoformat(),
+                                    "event": f"Trigger: {trigger_payload['condition']}"
+                                })
+                            
+                        # 3. Render
+                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_column_width=True)
+                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_column_width=True)
+                        json_placeholder.json({"frame": st.session_state.current_frame, "dsg_trigger": trigger_payload, "nodes": frame_nodes})
+                        
+                        # 4. LLM Generation
+                        if trigger_payload:
+                            commentary = st.session_state.agent_pool.generate_commentary(
+                                json.dumps(trigger_payload),
+                                st.session_state.domain_state,
+                                st.session_state.selected_domain
+                            )
+                            if commentary:
+                                st.session_state.commentary_history.append({
+                                    "timestamp": datetime.now().isoformat(),
+                                    "event": json.dumps(trigger_payload),
+                                    "commentary": commentary
+                                })
+                                    
+                        if st.session_state.commentary_history:
+                            comm_placeholder.markdown(f"<div class='commentary-box'><strong>Live:</strong> {st.session_state.commentary_history[-1]['commentary']}</div>", unsafe_allow_html=True)
+                            
+                        st.session_state.current_frame += 1
+                        import time
+                        time.sleep(1/fps)
+                else:
+                    ret, frame = cap.read()
+                    if ret:
+                        detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
+                        from perception.detector import draw_detections
+                        frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
+                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_column_width=True)
+                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_column_width=True)
+                        json_placeholder.json({"status": "Paused", "frame": st.session_state.current_frame})
+                        if st.session_state.commentary_history:
+                            comm_placeholder.markdown(f"<div class='commentary-box'><strong>Live:</strong> {st.session_state.commentary_history[-1]['commentary']}</div>", unsafe_allow_html=True)
+                
+                cap.release()
+            except Exception as e:
+                st.error(f"Error reading video: {e}")
+        else:
+            st.warning(f"Video file not found: {video_path}")
     
     with tab2:
         st.subheader("Event Detection Stream")
