@@ -191,7 +191,8 @@ Provide 1-2 sentences of engaging live analysis that flows naturally from the re
         }
         
         try:
-            response = requests.post(url, json=payload, timeout=10)
+            # Increased timeout to 60s since local models take time to load into VRAM on first run
+            response = requests.post(url, json=payload, timeout=60)
             response.raise_for_status()
             return response.json().get('response', '')
         except requests.exceptions.ConnectionError:
