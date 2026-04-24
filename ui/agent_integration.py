@@ -34,8 +34,8 @@ class LLMAgentPool:
                 "provider": "ollama",
                 "model": "llama3.1",
                 "api_key_env": None,
-                "max_tokens": 150,
-                "temperature": 0.7
+                "max_tokens": 60,
+                "temperature": 0.3
             }
         }
     
@@ -118,10 +118,12 @@ Current {domain} State:
 Your report/commentary should be:
 1. Energetic and engaging (if applicable) or precise and professional
 2. Technically accurate for the {domain} domain
-3. Concise (1-2 sentences)
+3. Concise (strictly 1-2 sentences)
 4. Descriptive of the action and its implications
 5. Build on previous events to maintain narrative flow
 6. {style}
+
+CRITICAL INSTRUCTION: DO NOT hallucinate. Do not invent names, scores, player interactions, or future events that are not explicitly provided in the state or the current event description. Stick strictly to what is happening right now.
 
 Generate content that sounds like a live {domain} monitoring feed output."""
 
@@ -144,7 +146,7 @@ NEW EVENT: {event_description}
 
 Current Phase: {domain_state.get('phase')}
 
-Provide 1-2 sentences of engaging live analysis that flows naturally from the recent history:"""
+Provide strictly 1 or 2 punchy sentences of engaging live analysis that flows naturally from the recent history. DO NOT invent facts not present above:"""
     
     def _calculate_run_rate(self, match_state: Dict) -> float:
         """Calculate current run rate"""
