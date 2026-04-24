@@ -198,8 +198,8 @@ with st.sidebar:
     st.subheader("LLM Agents")
     agent_models = st.multiselect(
         "Select Active Agents",
-        ["GPT-4o-mini", "Gemini 2.5 Flash", "Claude 3.5"],
-        default=["GPT-4o-mini"]
+        ["Ollama (Local)"],
+        default=["Ollama (Local)"]
     )
     st.session_state.agent_pool.active_agents = agent_models
     

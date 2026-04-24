@@ -20,7 +20,7 @@ class LLMAgentPool:
     """
     
     def __init__(self):
-        self.active_agents = ["GPT-4o-mini"]  # Default agent
+        self.active_agents = ["Ollama (Local)"]  # Default agent
         self.agent_configs = self._load_agent_configs()
         self.context_window = {}  # Maintain context for each agent
         self.commentary_history = []
@@ -30,24 +30,10 @@ class LLMAgentPool:
     def _load_agent_configs(self) -> Dict:
         """Load agent configurations from environment or default config"""
         return {
-            "GPT-4o-mini": {
-                "provider": "openai",
-                "model": "gpt-4o-mini",
-                "api_key_env": "OPENAI_API_KEY",
-                "max_tokens": 150,
-                "temperature": 0.7
-            },
-            "Gemini 2.5 Flash": {
-                "provider": "google",
-                "model": "gemini-2.5-flash",
-                "api_key_env": "GOOGLE_API_KEY",
-                "max_tokens": 150,
-                "temperature": 0.7
-            },
-            "Claude 3.5": {
-                "provider": "anthropic",
-                "model": "claude-3-5-sonnet-20241022",
-                "api_key_env": "ANTHROPIC_API_KEY",
+            "Ollama (Local)": {
+                "provider": "ollama",
+                "model": "llama3.1",
+                "api_key_env": None,
                 "max_tokens": 150,
                 "temperature": 0.7
             }
@@ -183,95 +169,35 @@ Provide 1-2 sentences of engaging live analysis that flows naturally from the re
         
         provider = config.get('provider')
         
-        if provider == "openai":
-            return self._call_openai(agent_name, config, system_prompt, user_prompt)
-        elif provider == "google":
-            return self._call_gemini(agent_name, config, system_prompt, user_prompt)
-        elif provider == "anthropic":
-            return self._call_claude(agent_name, config, system_prompt, user_prompt)
+        if provider == "ollama":
+            return self._call_ollama(agent_name, config, system_prompt, user_prompt)
         else:
             raise ValueError(f"Unknown provider {provider}")
     
-    def _call_openai(self, agent_name: str, config: Dict, system_prompt: str, user_prompt: str) -> Optional[str]:
-        """Call OpenAI API"""
+    def _call_ollama(self, agent_name: str, config: Dict, system_prompt: str, user_prompt: str) -> Optional[str]:
+        """Call local Ollama API"""
+        import requests
+        
+        url = "http://localhost:11434/api/generate"
+        payload = {
+            "model": config['model'],
+            "system": system_prompt,
+            "prompt": user_prompt,
+            "stream": False,
+            "options": {
+                "temperature": config['temperature'],
+                "num_predict": config['max_tokens']
+            }
+        }
+        
         try:
-            import openai
-        except ImportError:
-            raise ImportError("OpenAI package not installed. Run: pip install openai")
-            
-        api_key = os.getenv(config['api_key_env'])
-        if not api_key:
-            raise ValueError(f"API key missing. Add {config['api_key_env']} to your .env file.")
-        
-        client = openai.OpenAI(api_key=api_key)
-        
-        response = client.chat.completions.create(
-            model=config['model'],
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=config['max_tokens'],
-            temperature=config['temperature']
-        )
-        
-        return response.choices[0].message.content
-    
-    def _call_gemini(self, agent_name: str, config: Dict, system_prompt: str, user_prompt: str) -> Optional[str]:
-        """Call Google Gemini API"""
-        try:
-            import google.generativeai as genai
-        except ImportError:
-            raise ImportError("Google GenerativeAI package not installed. Run: pip install google-generativeai")
-            
-        api_key = os.getenv(config['api_key_env'])
-        if not api_key:
-            raise ValueError(f"API key missing. Add {config['api_key_env']} to your .env file.")
-        
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name=config['model']
-        )
-        
-        # Prepend system prompt to user prompt for compatibility with older SDKs
-        combined_prompt = f"{system_prompt}\n\n{user_prompt}"
-        
-        response = model.generate_content(
-            combined_prompt,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=config['max_tokens'],
-                temperature=config['temperature']
-            )
-        )
-        
-        return response.text
-    
-    def _call_claude(self, agent_name: str, config: Dict, system_prompt: str, user_prompt: str) -> Optional[str]:
-        """Call Anthropic Claude API"""
-        try:
-            import anthropic
-            
-            api_key = os.getenv(config['api_key_env'])
-            if not api_key:
-                logger.warning(f"API key not found for {agent_name}")
-                return None
-            
-            client = anthropic.Anthropic(api_key=api_key)
-            
-            response = client.messages.create(
-                model=config['model'],
-                max_tokens=config['max_tokens'],
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_prompt}
-                ]
-            )
-            
-            return response.content[0].text
-        
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            return response.json().get('response', '')
+        except requests.exceptions.ConnectionError:
+            raise ConnectionError("Ollama is not running. Please start Ollama locally.")
         except Exception as e:
-            logger.error(f"Claude API error: {e}")
-            return None
+            raise RuntimeError(f"Ollama error: {str(e)}")
     
     def _generate_default_commentary(self, event_description: str, domain_state: Dict, domain: str) -> str:
         """Generate default commentary if LLM calls fail"""
