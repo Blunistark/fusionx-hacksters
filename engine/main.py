@@ -25,6 +25,9 @@ llm_client = LLMClient()
 # This queue holds the text tokens that need to be streamed to the React UI
 commentary_queue = asyncio.Queue()
 
+# Global list to store history for Streamlit to fetch
+commentary_history = []
+
 async def process_frame_data(frame_data: dict):
     """
     Background task: Runs the DSG math. If the Delta Filter triggers, it hits the LLM.
@@ -43,8 +46,23 @@ async def process_frame_data(frame_data: dict):
             commentary = await llm_client.generate_commentary(payload)
             print(f"[ENGINE] LLM Output: {commentary}")
             
+            # Store in history for Streamlit
+            import datetime
+            commentary_history.append({
+                "timestamp": datetime.datetime.now().isoformat(),
+                "event": json.dumps(payload),
+                "commentary": commentary
+            })
+            
             # 4. Push to the streaming queue for the UI
             await commentary_queue.put(commentary)
+
+@app.get("/history")
+async def get_history():
+    """
+    Allows the Streamlit UI to fetch the live commentary history.
+    """
+    return {"history": commentary_history}
 
 @app.post("/ingest")
 async def ingest_vision_data(request: Request, background_tasks: BackgroundTasks):

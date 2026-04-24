@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 import sys
+import requests
 from datetime import datetime
 
 # Add engine to path
@@ -277,39 +278,58 @@ if selected_video:
 else:
     st.info("👈 Select a video from the sidebar to get started")
 
-# Interactive commentary simulation
+# Interactive commentary simulation & Live Sync
 st.divider()
-st.subheader("💬 Generate Live Commentary")
 
-col1, col2 = st.columns([3, 1])
+col_sync, col_sim = st.columns([1, 1])
 
-with col1:
-    event_description = st.text_area(
-        "Describe what happened in the current frame",
-        placeholder="e.g., The ball has pitched on good length, outside off stump..."
-    )
+with col_sync:
+    st.subheader("📡 Live Engine Feed")
+    if st.button("🔄 Sync with Engine Layer", use_container_width=True):
+        try:
+            response = requests.get("http://localhost:8000/history", timeout=2)
+            if response.status_code == 200:
+                history = response.json().get("history", [])
+                st.session_state.commentary_history = history
+                st.success(f"Synced {len(history)} events from the Engine!")
+                st.rerun()
+            else:
+                st.error("Engine responded with an error.")
+        except requests.exceptions.RequestException:
+            st.error("Could not connect to FastAPI Engine. Is it running?")
 
-with col2:
-    if st.button("🎙️ Generate Commentary", use_container_width=True):
-        if event_description:
-            with st.spinner("Generating commentary..."):
-                # Get commentary from agent pool
-                commentary = st.session_state.agent_pool.generate_commentary(
-                    event_description,
-                    st.session_state.domain_state,
-                    st.session_state.selected_domain
-                )
-                
-                if commentary:
-                    st.session_state.commentary_history.append({
-                        'timestamp': datetime.now().isoformat(),
-                        'event': event_description,
-                        'commentary': commentary
-                    })
-                    st.success("✅ Commentary generated!")
-                    st.markdown(f"*{commentary}*")
-        else:
-            st.warning("Please describe an event first")
+with col_sim:
+    st.subheader("💬 Manual Override Simulation")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        event_description = st.text_area(
+            "Describe what happened in the current frame",
+            placeholder="e.g., The ball has pitched on good length, outside off stump..."
+        )
+    
+    with col2:
+        if st.button("🎙️ Generate Commentary", use_container_width=True):
+            if event_description:
+                with st.spinner("Generating commentary..."):
+                    # Get commentary from agent pool
+                    commentary = st.session_state.agent_pool.generate_commentary(
+                        event_description,
+                        st.session_state.domain_state,
+                        st.session_state.selected_domain
+                    )
+                    
+                    if commentary:
+                        st.session_state.commentary_history.append({
+                            'timestamp': datetime.now().isoformat(),
+                            'event': event_description,
+                            'commentary': commentary
+                        })
+                        st.success("✅ Commentary generated!")
+                        st.markdown(f"*{commentary}*")
+            else:
+                st.warning("Please describe an event first")
 
 # Footer
 st.divider()
