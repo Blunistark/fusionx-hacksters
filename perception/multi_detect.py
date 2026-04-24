@@ -14,6 +14,8 @@ def main():
     parser = argparse.ArgumentParser(description='Multi-model detection: separate outputs per model')
     parser.add_argument('--input', '-i', required=True, help='Input video file path')
     parser.add_argument('--output-dir', '-o', default='perception/output', help='Directory to save output clips')
+    parser.add_argument('--segment-seconds', type=float, default=5.0, help='Length of each output segment in seconds')
+    parser.add_argument('--simulate-live', action='store_true', help='Pace processing to input FPS to simulate live stream')
     parser.add_argument('--conf', type=float, default=0.4, help='Confidence threshold')
     parser.add_argument('--device', default='cpu', help='Device for models: cpu or cuda')
     parser.add_argument('--person-backend', default='yolov5', choices=['yolov5', 'ultralytics'], help='Backend for person detector')
@@ -42,26 +44,42 @@ def main():
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frames_per_segment = max(1, int(round(fps * args.segment_seconds)))
 
     base_name = os.path.splitext(os.path.basename(args.input))[0]
-    person_out = os.path.join(args.output_dir, f"{base_name}_person.mp4")
-    obj_out = os.path.join(args.output_dir, f"{base_name}_objects.mp4")
-    combined_out = os.path.join(args.output_dir, f"{base_name}_combined.mp4")
-
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
+    def segment_paths(segment_idx):
+        seg = f"seg{segment_idx:04d}"
+        person_out = os.path.join(args.output_dir, f"{base_name}_person_{seg}.mp4")
+        obj_out = os.path.join(args.output_dir, f"{base_name}_objects_{seg}.mp4")
+        combined_out = os.path.join(args.output_dir, f"{base_name}_combined_{seg}.mp4")
+        return person_out, obj_out, combined_out
+
+    segment_idx = 1
+    frames_in_segment = 0
+    person_out, obj_out, combined_out = segment_paths(segment_idx)
     person_writer = cv2.VideoWriter(person_out, fourcc, fps, (w, h))
     obj_writer = cv2.VideoWriter(obj_out, fourcc, fps, (w, h))
     combined_writer = cv2.VideoWriter(combined_out, fourcc, fps, (w, h))
 
     frame_idx = 0
     start = time.time()
-    print(f"Processing frames and writing to {args.output_dir}...")
+    next_frame_time = time.time()
+    print(f"Processing frames and writing {args.segment_seconds:.1f}s segments to {args.output_dir}...")
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
         frame_idx += 1
+        frames_in_segment += 1
+
+        if args.simulate_live:
+            now = time.time()
+            if now < next_frame_time:
+                time.sleep(next_frame_time - now)
+            next_frame_time = max(next_frame_time + (1.0 / fps), time.time())
 
         # Run detectors (they are independent/backends may differ)
         try:
@@ -99,6 +117,18 @@ def main():
         obj_writer.write(obj_frame)
         combined_writer.write(combined_frame)
 
+        if frames_in_segment >= frames_per_segment:
+            person_writer.release()
+            obj_writer.release()
+            combined_writer.release()
+
+            segment_idx += 1
+            frames_in_segment = 0
+            person_out, obj_out, combined_out = segment_paths(segment_idx)
+            person_writer = cv2.VideoWriter(person_out, fourcc, fps, (w, h))
+            obj_writer = cv2.VideoWriter(obj_out, fourcc, fps, (w, h))
+            combined_writer = cv2.VideoWriter(combined_out, fourcc, fps, (w, h))
+
         if frame_idx % 100 == 0:
             elapsed = time.time() - start
             print(f"Frame {frame_idx} processed ({elapsed:.1f}s)")
@@ -110,7 +140,10 @@ def main():
 
     total_time = time.time() - start
     print(f"Done. {frame_idx} frames processed in {total_time:.1f}s")
-    print(f"Outputs:\n - {person_out}\n - {obj_out}\n - {combined_out}")
+    print("Outputs pattern:")
+    print(f" - {os.path.join(args.output_dir, base_name + '_person_segXXXX.mp4')}")
+    print(f" - {os.path.join(args.output_dir, base_name + '_objects_segXXXX.mp4')}")
+    print(f" - {os.path.join(args.output_dir, base_name + '_combined_segXXXX.mp4')}")
 
 
 if __name__ == '__main__':
