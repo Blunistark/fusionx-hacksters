@@ -99,11 +99,49 @@ class OfficialRelTRRunner:
             conf_rel, labels_rel = prob_rel.max(-1)
             
             # Extract high-confidence relationships
-            # ... (Full parsing logic goes here, identical to the SGG format we built)
+            scene_graph = {"nodes": [], "edges": []}
             
-            print("Raw Official Outputs Extracted!")
-            return outputs
+            # Use top 2 predictions for demonstration
+            h, w = frame_bgr.shape[:2]
+            
+            valid_rels = [i for i in range(len(conf_rel)) if conf_rel[i] > 0.3 and labels_rel[i] != 0]
+            
+            if len(valid_rels) > 0:
+                for idx in valid_rels[:2]:  # Limit to top 2 for clean UI
+                    rel_class = self.REL_CLASSES[labels_rel[idx].item() % len(self.REL_CLASSES)]
+                    
+                    # Official RelTR outputs Subject and Object boxes separately in the relation head
+                    sub_cx, sub_cy, sub_w, sub_h = sub_boxes[idx].tolist()
+                    obj_cx, obj_cy, obj_w, obj_h = obj_boxes[idx].tolist()
+                    
+                    # Denormalize
+                    sx1, sy1, sx2, sy2 = int((sub_cx-sub_w/2)*w), int((sub_cy-sub_h/2)*h), int((sub_cx+sub_w/2)*w), int((sub_cy+sub_h/2)*h)
+                    ox1, oy1, ox2, oy2 = int((obj_cx-obj_w/2)*w), int((obj_cy-obj_h/2)*h), int((obj_cx+obj_w/2)*w), int((obj_cy+obj_h/2)*h)
+                    
+                    # Assume Subject is index 0 and Object is index 1 for this pair
+                    sub_id = len(scene_graph["nodes"])
+                    scene_graph["nodes"].append({
+                        "id": sub_id, "label": "Subject", "bbox": [sx1, sy1, sx2, sy2], "confidence": 1.0
+                    })
+                    
+                    obj_id = len(scene_graph["nodes"])
+                    scene_graph["nodes"].append({
+                        "id": obj_id, "label": "Object", "bbox": [ox1, oy1, ox2, oy2], "confidence": 1.0
+                    })
+                    
+                    scene_graph["edges"].append({
+                        "source": sub_id, "target": obj_id, "predicate": rel_class, "confidence": conf_rel[idx].item()
+                    })
+                    
+            print(f"Extracted {len(scene_graph['edges'])} relations from Official Model!")
+            return scene_graph
 
 if __name__ == "__main__":
     print("Official RelTR Runner Ready.")
+    # To run this standalone, download checkpoint0149.pth from the official repo 
+    # and uncomment the lines below:
+    
     # runner = OfficialRelTRRunner('checkpoint0149.pth')
+    # dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    # graph = runner.process_frame(dummy_frame)
+    # print(graph)
