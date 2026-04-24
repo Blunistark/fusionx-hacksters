@@ -24,23 +24,18 @@ REM Navigate to UI directory
 cd /d "%~dp0"
 echo [✓] Working directory: %CD%
 
-REM Check if virtual environment exists
-if not exist "venv" (
+REM Check if root virtual environment exists
+if not exist "..\.venv" (
     echo.
-    echo [*] Creating virtual environment...
-    python -m venv venv
-    if errorlevel 1 (
-        echo ERROR: Failed to create virtual environment
-        pause
-        exit /b 1
-    )
-    echo [✓] Virtual environment created
+    echo ERROR: Root virtual environment not found in ..\.venv
+    pause
+    exit /b 1
 )
 
-REM Activate virtual environment
+REM Activate root virtual environment
 echo.
-echo [*] Activating virtual environment...
-call venv\Scripts\activate.bat
+echo [*] Activating root virtual environment...
+call ..\.venv\Scripts\activate.bat
 if errorlevel 1 (
     echo ERROR: Failed to activate virtual environment
     pause
