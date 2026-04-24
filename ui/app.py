@@ -7,6 +7,10 @@ from pathlib import Path
 import sys
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # Add engine to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
