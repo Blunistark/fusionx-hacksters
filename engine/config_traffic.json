@@ -1,0 +1,25 @@
+{
+  "domain": "Traffic",
+  "triggers_to_watch": [
+    {
+      "trigger_name": "VEHICLE_VISIBLE",
+      "node_A_type": "car",
+      "condition": "PRESENCE",
+      "action": "FIRE_PAYLOAD"
+    },
+    {
+      "trigger_name": "CONGESTION_DETECTED",
+      "node_A_type": "car",
+      "node_B_type": "car",
+      "condition": "INTERSECTS",
+      "action": "FIRE_PAYLOAD"
+    },
+    {
+      "trigger_name": "ACCIDENT",
+      "node_A_type": "car",
+      "node_B_type": "person",
+      "condition": "INTERSECTS",
+      "action": "FIRE_PAYLOAD"
+    }
+  ]
+}

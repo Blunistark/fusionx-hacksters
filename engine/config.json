@@ -20,6 +20,20 @@
       "node_A_type": "Player",
       "condition": "PRESENCE",
       "action": "FIRE_PAYLOAD"
+    },
+    {
+      "trigger_name": "LBW_APPEAL",
+      "node_A_type": "Ball",
+      "node_B_type": "Player",
+      "condition": "INTERSECTS",
+      "action": "FIRE_PAYLOAD"
+    },
+    {
+      "trigger_name": "RUN_OUT_ATTEMPT",
+      "node_A_type": "Player",
+      "node_B_type": "Stumps",
+      "condition": "INTERSECTS",
+      "action": "FIRE_PAYLOAD"
     }
   ]
 }

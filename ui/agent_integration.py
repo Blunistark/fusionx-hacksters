@@ -24,6 +24,8 @@ class LLMAgentPool:
         self.agent_configs = self._load_agent_configs()
         self.context_window = {}  # Maintain context for each agent
         self.commentary_history = []
+        self.last_system_prompt = ""
+        self.last_user_prompt = ""
     
     def _load_agent_configs(self) -> Dict:
         """Load agent configurations from environment or default config"""
@@ -35,7 +37,7 @@ class LLMAgentPool:
                 "max_tokens": 150,
                 "temperature": 0.7
             },
-            "Gemini 1.5 Flash": {
+            "Gemini 3 Flash": {
                 "provider": "google",
                 "model": "gemini-3-flash",
                 "api_key_env": "GOOGLE_API_KEY",
@@ -68,6 +70,9 @@ class LLMAgentPool:
         # Build the prompt with context
         system_prompt = self._build_system_prompt(domain_state, domain)
         user_prompt = self._build_user_prompt(event_description, domain_state, domain)
+        
+        self.last_system_prompt = system_prompt
+        self.last_user_prompt = user_prompt
         
         # Try primary agent first
         for agent in self.active_agents:

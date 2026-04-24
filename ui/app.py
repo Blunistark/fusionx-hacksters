@@ -139,6 +139,13 @@ with st.sidebar:
         st.session_state.domain_state = DOMAINS[selected_domain]['default_state'].copy()
         st.session_state.events_log = []
         st.session_state.commentary_history = []
+        
+        # Load correct DSG config for domain
+        config_file = 'config_traffic.json' if selected_domain == 'Traffic' else 'config.json'
+        config_path = os.path.join(os.path.dirname(__file__), '..', 'engine', config_file)
+        if os.path.exists(config_path):
+            st.session_state.dsg_engine = DynamicSceneGraph(config_path)
+            
         st.rerun()
     
     domain_cfg = DOMAINS[selected_domain]
@@ -216,13 +223,19 @@ if selected_video:
     video_path = 0 if is_live_cam else os.path.join(os.path.dirname(__file__), '..', 'assets', selected_video)
     
     # Tabs for different views
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📺 Video & Analysis",
         "📊 Event Stream",
         "🤖 Agent Outputs",
-        "📈 Domain Dashboard"
+        "📈 Domain Dashboard",
+        "🔍 Prompt Engineering"
     ])
     
+    with tab5:
+        st.subheader("LLM Prompt Diagnostics")
+        st.write("View the exact micro-prompts being sent to the LLM in real-time.")
+        prompt_placeholder = st.empty()
+
     with tab1:
         st.subheader(f"Video: {selected_video}")
         
@@ -388,7 +401,19 @@ if selected_video:
                                 })
                                     
                         if st.session_state.commentary_history:
-                            comm_placeholder.markdown(f"<div class='commentary-box'><strong>Live:</strong> {st.session_state.commentary_history[-1]['commentary']}</div>", unsafe_allow_html=True)
+                            html = "<div style='height: 250px; overflow-y: auto; display: flex; flex-direction: column-reverse; padding: 10px; border: 1px solid #333; border-radius: 5px; background: #0e1117;'>"
+                            for item in reversed(st.session_state.commentary_history[-15:]):
+                                time_str = item['timestamp'][11:19]
+                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
+                            html += "</div>"
+                            comm_placeholder.markdown(html, unsafe_allow_html=True)
+                            
+                            # Update Prompt Engineering Tab
+                            if hasattr(st.session_state.agent_pool, 'last_system_prompt'):
+                                prompt_placeholder.markdown(
+                                    f"**System Prompt:**\n```text\n{st.session_state.agent_pool.last_system_prompt}\n```\n\n"
+                                    f"**User Prompt:**\n```text\n{st.session_state.agent_pool.last_user_prompt}\n```"
+                                )
                             
                         st.session_state.current_frame += 1
                         import time
@@ -410,7 +435,18 @@ if selected_video:
                         analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
                         json_placeholder.json({"status": "Paused", "frame": st.session_state.current_frame})
                         if st.session_state.commentary_history:
-                            comm_placeholder.markdown(f"<div class='commentary-box'><strong>Live:</strong> {st.session_state.commentary_history[-1]['commentary']}</div>", unsafe_allow_html=True)
+                            html = "<div style='height: 250px; overflow-y: auto; display: flex; flex-direction: column-reverse; padding: 10px; border: 1px solid #333; border-radius: 5px; background: #0e1117;'>"
+                            for item in reversed(st.session_state.commentary_history[-15:]):
+                                time_str = item['timestamp'][11:19]
+                                html += f"<div style='margin-bottom: 8px; padding: 10px; background-color: #1e1e1e; border-left: 3px solid #ff4b4b;'><strong>[{time_str}] Live:</strong> {item['commentary']}</div>"
+                            html += "</div>"
+                            comm_placeholder.markdown(html, unsafe_allow_html=True)
+                            
+                            if hasattr(st.session_state.agent_pool, 'last_system_prompt'):
+                                prompt_placeholder.markdown(
+                                    f"**System Prompt:**\n```text\n{st.session_state.agent_pool.last_system_prompt}\n```\n\n"
+                                    f"**User Prompt:**\n```text\n{st.session_state.agent_pool.last_user_prompt}\n```"
+                                )
                 
                 if cap:
                     cap.release()
