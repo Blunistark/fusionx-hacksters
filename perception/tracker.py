@@ -1,6 +1,7 @@
 import cv2
 import json
 import time
+import requests
 try:
     # prefer package-style import when running from project root
     from perception.detector import Detector, draw_detections
@@ -9,7 +10,7 @@ except Exception:
     from detector import Detector, draw_detections
 
 class PerceptionLayer:
-    def __init__(self, video_source, model_backend="ultralytics", model_path="yolov8n.pt", device='cpu', stream_delay=0.03):
+    def __init__(self, video_source, model_backend="ultralytics", model_path="yolov8n.pt", device='cpu', stream_delay=0.03, engine_url="http://localhost:8000/ingest"):
         """
         Initializes the YOLO model and the video capture.
         For a hackathon MVP, we use the nano model (yolov8n.pt) for maximum FPS.
@@ -102,5 +103,5 @@ class PerceptionLayer:
 
 if __name__ == "__main__":
     # Ensure you have 'clip1.mp4' in this directory or provide the absolute path.
-    tracker = PerceptionLayer(video_source='clip1.mp4')
+    tracker = PerceptionLayer(video_source='../assets/data/clip1.mp4')
     tracker.run()
