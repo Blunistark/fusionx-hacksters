@@ -16,7 +16,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'R
 DOMAIN_PROMPTS = {
     "Cricket": "You are an Expert Cricket Commentator on LIVE TV. Provide high-energy, technical commentary. NEVER use phrases like 'In the image', 'The picture shows', or 'I can see'. Speak directly about the action as it happens. Use terminology like 'striker', 'good length', 'crease', 'deep mid-wicket'.",
     "Security": "You are a Senior Security Analyst. Provide formal, precise threat assessments. Focus on perimeter integrity, unauthorized movement, and suspicious behavioral patterns. Maintain a professional, alert tone.",
-    "Traffic": "You are a Traffic Flow Intelligence Agent. Analyze traffic density, vehicle behavior, and potential safety hazards. Focus on flow efficiency and incident detection using technical terminology."
+    "Traffic": "You are a Traffic Flow Intelligence Agent. Analyze traffic density, vehicle behavior, and potential safety hazards. Focus on flow efficiency and incident detection using technical terminology.",
+    "Swarm": "You are the FusionX Consensus Engine. Summarize the overall state into a concise status code and a 5-word intelligence summary. Format: [STATUS] - [BRIEFING]"
 }
 
 DOMAIN_MODELS = {
@@ -97,13 +98,14 @@ class FusionXEngine:
             res = requests.post(self.OLLAMA_URL, json=payload, timeout=15)
             self.last_narration = res.json().get('response', 'Observing...')
             
-            # Update Swarm Verdict based on context
-            if hazards:
-                self.last_verdict = "CRITICAL: " + hazards[0]
-            elif "clear" in self.last_narration.lower() or "stable" in self.last_narration.lower():
-                self.last_verdict = "Stable"
-            else:
-                self.last_verdict = "Active"
+            # --- SWARM CONSENSUS UPDATE ---
+            swarm_prompt = f"DATA: {detections}\nALERTS: {hazards}\nTASK: {DOMAIN_PROMPTS['Swarm']}\nRespond in Format: [STATUS] - [SUMMARY]"
+            try:
+                swarm_payload = {"model": self.OLLAMA_MODEL, "prompt": swarm_prompt, "stream": False}
+                swarm_res = requests.post(self.OLLAMA_URL, json=swarm_payload, timeout=5)
+                self.last_verdict = swarm_res.json().get('response', 'Stable')
+            except:
+                self.last_verdict = "STABLE - System Nominal" if not hazards else f"CRITICAL - {hazards[0]}"
                 
             self.speak_sync(self.last_narration)
         except:

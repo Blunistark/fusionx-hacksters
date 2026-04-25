@@ -272,8 +272,12 @@ if selected_video:
                     from perception.detector import SuperDetector
                     from agent_integration import DOMAIN_MODELS
                     domain_models = DOMAIN_MODELS.get(st.session_state.selected_domain, ["yolov8n.pt"]).copy()
-                    if "yolov8n-face.pt" not in domain_models:
-                        domain_models.append("yolov8n-face.pt")
+                    
+                    # Optional: Add Face Detection only if file exists
+                    face_model = "yolov8n-face.pt"
+                    if os.path.exists(face_model):
+                        domain_models.append(face_model)
+                    
                     st.session_state.yolo_detector = SuperDetector(model_paths=domain_models, device='cuda')
                     
                 if 'reltr_generator' not in st.session_state:
