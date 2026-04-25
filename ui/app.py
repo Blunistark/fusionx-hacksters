@@ -386,6 +386,16 @@ if selected_video:
                                     "primary_actor": frame_nodes[src_node['label']],
                                     "secondary_actor": frame_nodes[tgt_node['label']]
                                 }
+                            
+                            # Extract all relationships for the narrator
+                            current_rels = []
+                            for edge in scene_graph['edges']:
+                                try:
+                                    src_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['source'])
+                                    tgt_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['target'])
+                                    current_rels.append(f"{src_node['label']} {edge['predicate']} {tgt_node['label']}")
+                                except: pass
+                            st.session_state.current_rels = current_rels
                         
                         else:
                             # --- PHASE 1: YOLO + HEURISTIC ENGINE ---
@@ -454,8 +464,9 @@ if selected_video:
                         engine_key = f"{st.session_state.selected_domain.lower()}_engine"
                         if engine_key in st.session_state:
                             engine = st.session_state[engine_key]
-                            # Process frame
-                            frame_annotated = engine.process_frame(frame, st.session_state.current_frame)
+                            # Process frame with optional relationships from RelTR
+                            rels = st.session_state.get('current_rels', [])
+                            frame_annotated = engine.process_frame(frame, st.session_state.current_frame, rels=rels)
                             
                             # Update Persistent Narrative (Top)
                             st_narration.markdown(f"""

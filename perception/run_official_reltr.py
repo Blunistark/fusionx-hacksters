@@ -16,8 +16,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from models import build_model
 
 class FusionXUltraMaster:
-    def __init__(self):
-        print("--- INITIALIZING ULTRA MASTER (Integrated for UI) ---")
+    def __init__(self, domain="Cricket"):
+        print(f"--- INITIALIZING ULTRA MASTER ({domain} Mode) ---")
+        self.domain = domain
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.yolo_a = YOLO('yolov8n.pt')
         self.yolo_b = YOLO('yolov10n.pt')
@@ -32,6 +33,23 @@ class FusionXUltraMaster:
         self.is_thinking = False
         self.is_narrating = False
         self.instant_alert = False
+        self.current_rels = []
+        
+        # Domain-Specific Narrator Personalities
+        self.DOMAIN_CONFIGS = {
+            "Cricket": {
+                "role": "Expert Cricket Commentator",
+                "task": "Provide a high-energy, technical 1-sentence summary of the action using cricket terminology (e.g. good length, square leg, striker, delivery).",
+            },
+            "Traffic": {
+                "role": "Traffic Safety Swarm",
+                "task": "Summarize the last 5s into a 1-sentence technical traffic flow and safety report.",
+            },
+            "Security": {
+                "role": "High-Security Warden",
+                "task": "Provide a 1-sentence formal risk assessment focused on unauthorized movement or suspicious patterns.",
+            }
+        }
         
         # Logging & Evidence (Linked to UI)
         self.log_file = "FusionX_Intelligence.json"
@@ -83,20 +101,26 @@ class FusionXUltraMaster:
 
     def ask_swarm_async(self, frame_copy, detections, rels, hazards):
         self.is_thinking = True
-        prompt = f"SWARM TASK: Analyze Objs={detections}, Rels={rels}, Hazards={hazards}. 1 short verdict."
+        config = self.DOMAIN_CONFIGS.get(self.domain, self.DOMAIN_CONFIGS["Cricket"])
+        prompt = f"ROLE: {config['role']}\nSWARM TASK: Analyze Objs={detections}, Rels={rels}, Hazards={hazards}. {config['task']} 1 short verdict."
         try:
             res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=5)
-            self.last_swarm_verdict = res.json().get('response', 'Stable.')
+            self.last_swarm_verdict = res.json().get('response', 'System stable.')
             self.save_state(frame_copy, detections, hazards)
         except: pass
         self.is_thinking = False
 
     def ask_narrator_async(self):
         self.is_narrating = True
-        prompt = f"NARRATOR: Summarize the last 5s into a 1-sentence traffic story: {self.intelligence_logs[-5:]}"
+        config = self.DOMAIN_CONFIGS.get(self.domain, self.DOMAIN_CONFIGS["Cricket"])
+        context = {
+            "recent_events": self.intelligence_logs[-5:],
+            "detected_relationships": self.current_rels
+        }
+        prompt = f"ROLE: {config['role']}\nTASK: {config['task']}\nCONTEXT: {context}"
         try:
             res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
-            self.last_narration = res.json().get('response', 'Monitoring flow.')
+            self.last_narration = res.json().get('response', 'Observing action.')
         except: pass
         self.is_narrating = False
 
@@ -123,7 +147,10 @@ class FusionXUltraMaster:
                     with torch.no_grad():
                         out = self.reltr(img)
                         conf, labels = out['rel_logits'].softmax(-1)[0, :, :-1].max(-1)
-                        for i in torch.where(conf > 0.35)[0]: current_rels.append(self.REL_CLASSES[labels[i].item()])
+                        self.current_rels = []
+                        for i in torch.where(conf > 0.35)[0]: self.current_rels.append(self.REL_CLASSES[labels[i].item()])
+                
+                current_rels = self.current_rels
                 
                 for i, d1 in enumerate(detections):
                     for j, d2 in enumerate(detections):
@@ -154,5 +181,11 @@ class FusionXUltraMaster:
         cap.release(); cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    runner = FusionXUltraMaster()
-    runner.run("../assets/accident-1.mp4")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--domain", type=str, default="Cricket", choices=["Cricket", "Traffic", "Security"])
+    parser.add_argument("--video", type=str, default="../assets/cricket_demo.mp4")
+    args = parser.parse_args()
+    
+    runner = FusionXUltraMaster(domain=args.domain)
+    runner.run(args.video)

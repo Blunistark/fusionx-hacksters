@@ -14,9 +14,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'R
 
 # --- DOMAIN INTELLIGENCE CONFIG ---
 DOMAIN_PROMPTS = {
-    "Cricket": "You are a professional Cricket Commentator. Analyze the player movements and ball trajectory. Speak with excitement and use cricket terminology like 'Good length', 'Square leg', 'Clean bowled'.",
-    "Security": "You are a High-Security Warden. Analyze the scene for suspicious behavior, unauthorized entry, or loitering. Be formal and focus on risk assessment.",
-    "Traffic": "You are a Traffic Safety Swarm. Analyze for accidents, speeding, and reckless driving. Focus on impact physics and road safety."
+    "Cricket": "You are an Expert Cricket Commentator. Your goal is to provide high-energy, technical live commentary. Use terminology like 'striker', 'good length', 'crease', 'deep mid-wicket'. Focus on the action and movement, not just stating what is in the image.",
+    "Security": "You are a Senior Security Analyst. Provide formal, precise threat assessments. Focus on perimeter integrity, unauthorized movement, and suspicious behavioral patterns. Maintain a professional, alert tone.",
+    "Traffic": "You are a Traffic Flow Intelligence Agent. Analyze traffic density, vehicle behavior, and potential safety hazards. Focus on flow efficiency and incident detection using technical terminology."
 }
 
 DOMAIN_MODELS = {
@@ -53,7 +53,7 @@ class FusionXEngine:
         self.OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
         self.OLLAMA_MODEL = "llama3"
 
-    def process_frame(self, frame, frame_count):
+    def process_frame(self, frame, frame_count, rels=None):
         detections = []
         for model in self.models:
             res = model(frame, verbose=False)[0]
@@ -82,13 +82,13 @@ class FusionXEngine:
         if frame_count % 90 == 0 and detections and not self.is_thinking:
             _, buffer = cv2.imencode('.jpg', frame)
             img_str = base64.b64encode(buffer).decode('utf-8')
-            threading.Thread(target=self.ask_vision_ollama, args=(detections, hazards, img_str)).start()
+            threading.Thread(target=self.ask_vision_ollama, args=(detections, hazards, img_str, rels)).start()
 
         return frame
 
-    def ask_vision_ollama(self, detections, hazards, img_str):
+    def ask_vision_ollama(self, detections, hazards, img_str, rels=None):
         self.is_thinking = True
-        prompt = f"ROLE: {DOMAIN_PROMPTS[self.domain]}\nDATA: {detections}\nALERTS: {hazards}\nTASK: Describe the scene visually. 1 sentence."
+        prompt = f"ROLE: {DOMAIN_PROMPTS[self.domain]}\nDATA: {detections}\nRELATIONSHIPS: {rels}\nALERTS: {hazards}\nTASK: Provide professional expert {self.domain} commentary/assessment of this scene in 1 sentence."
         try:
             payload = {"model": "llava", "prompt": prompt, "images": [img_str], "stream": False}
             res = requests.post(self.OLLAMA_URL, json=payload, timeout=15)
