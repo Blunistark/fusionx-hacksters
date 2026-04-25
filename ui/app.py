@@ -483,9 +483,15 @@ if selected_video:
                             detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
                             from perception.detector import draw_detections
                             frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
-                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        json_placeholder.json({"status": "Paused", "frame": st.session_state.current_frame})
+                        # Stability Fix: Encode to JPEG to avoid Media Manager 404s
+                        _, raw_buf = cv2.imencode('.jpg', cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        _, ann_buf = cv2.imencode('.jpg', cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB))
+                        
+                        raw_placeholder.image(raw_buf.tobytes(), use_container_width=True)
+                        analysis_placeholder.image(ann_buf.tobytes(), use_container_width=True)
+                        
+                        import time
+                        time.sleep(0.01) # Small sleep to prevent CPU spike
                 
                 if cap:
                     cap.release()
