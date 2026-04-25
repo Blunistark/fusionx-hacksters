@@ -8,6 +8,7 @@ import sys
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
+import time
 
 # Load environment variables from .env
 load_dotenv()
@@ -114,7 +115,6 @@ def init_session_state():
                 from agent_integration import FusionXEngine
                 st.session_state[key] = FusionXEngine(domain=d)
             except Exception as e:
-                # Silently fail for other domains until needed
                 pass
 
 init_session_state()
@@ -227,15 +227,11 @@ if selected_video:
         "📊 Event Stream"
     ])
     
-
     with tab1:
         st.subheader(f"Video: {selected_video}")
-        
-        # Player controls on top
         render_match_controls()
         
         col_main, col_data = st.columns([2, 1])
-        
         with col_main:
             col_raw, col_analysis = st.columns(2)
             with col_raw:
@@ -244,59 +240,43 @@ if selected_video:
             with col_analysis:
                 st.write("#### YOLO Analysis (Vision)")
                 analysis_placeholder = st.empty()
-                
             st.divider()
             st.write("#### Live Commentary")
-            comm_placeholder = st.empty()
+            st_narration = st.empty()
                 
         with col_data:
             st.write("#### 📡 Intelligence Feed")
             json_placeholder = st.empty()
             swarm_placeholder = st.empty()
             
-        # --- PREPARE PERSISTENT PLACEHOLDERS (Anti-Ghosting) ---
-        with col_main:
-            st_narration = st.empty()
-            st_reflex_alert = st.empty()
-            
         if is_live or os.path.exists(video_path):
             try:
-                # Initialize Super Vision Engine (Multi-Model)
+                # Initialize Super Vision Engine
                 if 'yolo_detector' not in st.session_state:
                     from perception.detector import SuperDetector
                     from agent_integration import DOMAIN_MODELS
                     domain_models = DOMAIN_MODELS.get(st.session_state.selected_domain, ["yolov8n.pt"]).copy()
-                    
-                    # Optional: Add Face Detection only if file exists
                     face_model = "yolov8n-face.pt"
                     if os.path.exists(face_model):
                         domain_models.append(face_model)
-                    
                     st.session_state.yolo_detector = SuperDetector(model_paths=domain_models, device='cuda')
                     
                 if 'reltr_generator' not in st.session_state:
-                    import sys
-                    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
                     from perception.reltr_detector import RelTRSceneGraphGenerator
-                    weights = os.path.join(os.path.dirname(__file__), '..', 'reltr_hackathon_checkpoint.pth')
-                    if not os.path.exists(weights):
-                        weights = None
-                    st.session_state.reltr_generator = RelTRSceneGraphGenerator(weights_path=weights)
+                    st.session_state.reltr_generator = RelTRSceneGraphGenerator()
                     
-                sct = None
                 cap = None
-                
+                sct = None
                 if is_screen_share:
                     import mss
                     sct = mss.mss()
-                    monitor = sct.monitors[1] # Capture primary monitor
+                    monitor = sct.monitors[1]
                 elif is_youtube:
                     import yt_dlp
-                    with st.spinner("Extracting stream from YouTube..."):
-                        ydl_opts = {'format': 'best[ext=mp4]/best', 'quiet': True}
-                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            info = ydl.extract_info(youtube_url, download=False)
-                            stream_url = info.get('url', youtube_url)
+                    ydl_opts = {'format': 'best[ext=mp4]/best', 'quiet': True}
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(youtube_url, download=False)
+                        stream_url = info.get('url', youtube_url)
                     cap = cv2.VideoCapture(stream_url)
                 else:
                     cap = cv2.VideoCapture(video_path)
@@ -305,242 +285,91 @@ if selected_video:
                     fps = 30
                     st.session_state.playing = True
                 else:
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    
-                    # Hidden slider for seeking when paused
-                    if not st.session_state.playing:
-                        frame_idx = st.slider("Seek Frame", 0, total_frames - 1, st.session_state.current_frame)
-                        st.session_state.current_frame = frame_idx
-                        
                     cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame)
                 
-                if st.session_state.playing:
-                    while st.session_state.playing:
+                while True:
+                    if not st.session_state.playing:
+                        # Paused state handling
                         if is_screen_share:
-                            sct_img = sct.grab(monitor)
-                            frame = np.array(sct_img)
+                            frame = np.array(sct.grab(monitor))
                             frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
                             ret = True
                         else:
-                            if not cap.isOpened():
-                                break
                             ret, frame = cap.read()
-                            
-                        if not ret:
-                            st.session_state.playing = False
-                            st.rerun()
-                            
-                        # 1. Vision Analysis & DSG Generation
-                        trigger_payload = None
-                        frame_nodes = {}
-                        results = None
-                        frame_annotated = frame.copy()
-                        engine = None
                         
-                        if st.session_state.vision_engine == "RelTR Transformer (Experimental)" or "RelTR" in st.session_state.vision_engine:
-                            # --- PHASE 3: RELTR SCENE GRAPH GENERATION ---
-                            scene_graph = st.session_state.reltr_generator.generate_scene_graph(frame)
-                            frame_annotated = st.session_state.reltr_generator.draw_scene_graph(frame.copy(), scene_graph)
-                            
-                            # Map RelTR graph to UI json format
-                            for node in scene_graph['nodes']:
-                                frame_nodes[node['label']] = {
-                                    "type": node['label'],
-                                    "box": node['bbox'],
-                                    "center": [(node['bbox'][0]+node['bbox'][2])//2, (node['bbox'][1]+node['bbox'][3])//2],
-                                    "velocity_kph": 0
-                                }
-                            
-                            # If RelTR found an edge, fire the payload natively!
-                            if scene_graph['edges']:
-                                edge = scene_graph['edges'][0]
-                                src_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['source'])
-                                tgt_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['target'])
-                                
-                                trigger_payload = {
-                                    "event": edge['predicate'].upper(),
-                                    "primary_actor": frame_nodes[src_node['label']],
-                                    "secondary_actor": frame_nodes[tgt_node['label']]
-                                }
-                            
-                            # Extract all relationships for the narrator
-                            current_rels = []
-                            for edge in scene_graph['edges']:
-                                try:
-                                    src_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['source'])
-                                    tgt_node = next(n for n in scene_graph['nodes'] if n['id'] == edge['target'])
-                                    current_rels.append(f"{src_node['label']} {edge['predicate']} {tgt_node['label']}")
-                                except: pass
-                            st.session_state.current_rels = current_rels
+                        if ret:
+                            raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                            analysis_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                        break
                         
-                        else:
-                            # --- PHASE 1: SUPER VISION ENGINE (Boxes + Poses + Faces) ---
-                            results = st.session_state.yolo_detector.detect(frame, conf=0.4)
-                            from perception.detector import draw_detections
-                            frame_annotated = draw_detections(frame.copy(), results)
-                            
-                            # Format DSG nodes from combined detections
-                            detections = results.get("detections", [])
-                            for i, det in enumerate(detections):
-                                cls_name = det['label']
-                                
-                                # Map standard YOLO COCO classes to our custom Domain labels
-                                if cls_name == "sports ball": cls_name = "Ball"
-                                elif cls_name in ["baseball bat", "tennis racket"]: cls_name = "Bat"
-                                elif cls_name == "person": 
-                                    cls_name = "Player"
-                                    # --- HEURISTIC ROLE IDENTIFICATION ---
-                                    # Check if the person is wearing black (Umpire) or colored jersey (Team)
-                                    x1, y1, x2, y2 = map(int, det['box'])
-                                    crop = frame[max(0, y1):y2, max(0, x1):x2]
-                                    if crop.size > 0:
-                                        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                                        mean_brightness = np.mean(hsv[:, :, 2])
-                                        if mean_brightness < 60:
-                                            cls_name = "Umpire"
-                                
-                                x1, y1, x2, y2 = map(int, det['box'])
-                                
-                                if cls_name not in frame_nodes:
-                                    frame_nodes[cls_name] = {
-                                        "type": cls_name,
-                                        "box": [x1, y1, x2, y2],
-                                        "center": [(x1+x2)//2, (y1+y2)//2],
-                                        "velocity_kph": 0
-                                    }
-                            
-                            # 2. DSG Engine Processing (Heuristic Math)
-                            if st.session_state.dsg_engine and frame_nodes:
-                                events = st.session_state.dsg_engine.evaluate_frame(frame_nodes)
-                                if events:
-                                    trigger_payload = events[0] # Take primary event
-
-                        # --- EVENT-TRIGGERED OCR ---
-                        # Only run computationally heavy OCR when an action happens!
-                        if trigger_payload:
-                            try:
-                                if 'ocr_reader' not in st.session_state:
-                                    import easyocr
-                                    with st.spinner("Loading OCR Model for the first time..."):
-                                        st.session_state.ocr_reader = easyocr.Reader(['en'], gpu=True)
-                                        
-                                h, w = frame.shape[:2]
-                                bottom_crop = frame[int(h*0.75):h, :] # Bottom 25% of screen
-                                
-                                ocr_result = st.session_state.ocr_reader.readtext(bottom_crop, detail=0, paragraph=True)
-                                trigger_payload["scoreboard_ocr"] = " ".join(ocr_result)
-                            except Exception as e:
-                                trigger_payload["scoreboard_ocr"] = f"OCR Error/Missing: {e}"
-                            
-                            st.session_state.events_log.append({
-                                "timestamp": datetime.now().isoformat(),
-                                "event": f"Trigger: {trigger_payload.get('event', 'Unknown')}"
-                            })
-                            
-                        # --- FUSIONX DOMAIN INTELLIGENCE ---
-                        engine_key = f"{st.session_state.selected_domain.lower()}_engine"
-                        if engine_key not in st.session_state:
-                            from agent_integration import FusionXEngine
-                            st.session_state[engine_key] = FusionXEngine(domain=st.session_state.selected_domain)
-                        
-                        engine = st.session_state[engine_key]
-                        
-                        # Auto-fix for session state persistence during upgrades
-                        if not hasattr(engine, 'process_frame_optimized'):
-                            from agent_integration import FusionXEngine
-                            st.session_state[engine_key] = FusionXEngine(domain=st.session_state.selected_domain)
-                            engine = st.session_state[engine_key]
-                        
-                        # Process frame with optional relationships from RelTR
-                        rels = st.session_state.get('current_rels', [])
-                        # Pass pre-calculated results to engine to avoid redundant model runs
-                        engine.process_frame_optimized(frame, st.session_state.current_frame, results=results, rels=rels)
-                        
-                        # Update Persistent Narrative (Top)
-                        st_narration.markdown(f"""
-                            <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:15px;'>
-                                <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ {st.session_state.selected_domain.upper()} NARRATOR</b><br/>
-                                <span style='font-size:1.1rem; color:white;'>"{engine.last_narration}"</span>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Update Agent Swarm (Sidebar)
-                        with swarm_placeholder.container():
-                            st.write(f"#### 🤖 {st.session_state.selected_domain} Agent Swarm")
-                            st.error(f"**Consensus Verdict:** {engine.last_verdict}")
-                            if getattr(engine, 'instant_alert', False):
-                                st.warning("⚠️ **IMPACT REFLEX TRIGGERED**")
-
-                        else:
-                            frame_annotated = frame.copy()
-                        # --- RENDER ---
-                        raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        json_placeholder.json({"frame": st.session_state.current_frame, "nodes": frame_nodes, "verdict": getattr(engine, 'last_verdict', 'N/A')})
-                        
-                        st.session_state.current_frame += 1
-                        import time
-                        time.sleep(0.01)
-                else:
+                    # Playing state handling
                     if is_screen_share:
-                        sct_img = sct.grab(monitor)
-                        frame = np.array(sct_img)
+                        frame = np.array(sct.grab(monitor))
                         frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
                         ret = True
                     else:
                         ret, frame = cap.read()
                         
-                    if ret:
-                        if st.session_state.vision_engine == "RelTR Transformer (Phase 3 Experimental)" or "RelTR" in st.session_state.vision_engine:
-                            # Use RelTR for paused frame preview
-                            scene_graph = st.session_state.reltr_generator.generate_scene_graph(frame)
-                            frame_annotated = st.session_state.reltr_generator.draw_scene_graph(frame.copy(), scene_graph)
-                        else:
-                            # Use YOLO for paused frame preview
-                            detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
-                            from perception.detector import draw_detections
-                            frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
-                        # Stability Fix: Encode to JPEG to avoid Media Manager 404s
-                        _, raw_buf = cv2.imencode('.jpg', cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                        _, ann_buf = cv2.imencode('.jpg', cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB))
+                    if not ret:
+                        st.session_state.playing = False
+                        break
                         
-                        raw_placeholder.image(raw_buf.tobytes(), use_container_width=True)
-                        analysis_placeholder.image(ann_buf.tobytes(), use_container_width=True)
+                    # --- VISION & COGNITIVE LOOP ---
+                    results = None
+                    frame_annotated = frame.copy()
+                    frame_nodes = {}
+                    
+                    if "RelTR" in st.session_state.vision_engine:
+                        scene_graph = st.session_state.reltr_generator.generate_scene_graph(frame)
+                        frame_annotated = st.session_state.reltr_generator.draw_scene_graph(frame.copy(), scene_graph)
+                        current_rels = [f"{n['label']}" for n in scene_graph['nodes']] # Simplification
+                    else:
+                        results = st.session_state.yolo_detector.detect(frame, conf=0.4)
+                        from perception.detector import draw_detections
+                        frame_annotated = draw_detections(frame.copy(), results)
                         
-                        # Browser Audio Playback
-                        if tts_enabled:
-                            audio_bytes = engine.get_audio()
-                            if audio_bytes:
-                                st.audio(audio_bytes, format="audio/wav", autoplay=True)
-                        
-                        import time
-                        time.sleep(0.01) # Small sleep to prevent CPU spike
-                
-                if cap:
-                    cap.release()
+                        detections = results.get("detections", [])
+                        for det in detections:
+                            frame_nodes[det['label']] = {"type": det['label'], "box": det['box']}
+                            
+                    # --- ENGINE SYNC ---
+                    engine_key = f"{st.session_state.selected_domain.lower()}_engine"
+                    if engine_key not in st.session_state:
+                        from agent_integration import FusionXEngine
+                        st.session_state[engine_key] = FusionXEngine(domain=st.session_state.selected_domain)
+                    
+                    engine = st.session_state[engine_key]
+                    if hasattr(engine, 'process_frame_optimized'):
+                        engine.process_frame_optimized(frame, st.session_state.current_frame, results=results)
+                    
+                    # --- RENDER UI ---
+                    raw_placeholder.image(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    analysis_placeholder.image(cv2.cvtColor(frame_annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    json_placeholder.json({"frame": st.session_state.current_frame, "nodes": frame_nodes})
+                    
+                    st_narration.markdown(f"""
+                        <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6;'>
+                            <b style='color:#93c5fd;'>🎙️ {st.session_state.selected_domain.upper()} NARRATOR</b><br/>
+                            <span style='color:white;'>"{engine.last_narration if engine else 'Initializing...'}"</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    with swarm_placeholder.container():
+                        st.error(f"**Consensus Verdict:** {engine.last_verdict if engine else 'N/A'}")
+                    
+                    st.session_state.current_frame += 1
+                    time.sleep(0.01)
+                    
+                if cap: cap.release()
             except Exception as e:
-                st.error(f"Error reading video: {e}")
-        else:
-            st.warning(f"Video file not found: {video_path}")
-    
+                st.error(f"Engine Error: {e}")
+                
     with tab2:
         st.subheader("Domain Dashboard")
         render_match_dashboard(st.session_state.domain_state)
-        
     with tab3:
         st.subheader("Event Detection Stream")
         render_event_stream(st.session_state.events_log, st.session_state.domain_state)
-else:
-    st.info("👈 Select a video from the sidebar to get started")
 
-
-# Footer
 st.divider()
-st.markdown(f"""
-<div style='text-align: center; color: #666; padding: 20px;'>
-    <p><strong>{st.session_state.selected_domain} Analysis System</strong></p>
-    <p>Powered by YOLOv8 + DSG Engine + LLM Agents</p>
-    <p><small>Real-time computer vision meets intelligent narration</small></p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(f"<div style='text-align: center; color: #666;'>Powered by FusionX Super-Vision Stack</div>", unsafe_allow_html=True)
