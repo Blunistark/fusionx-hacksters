@@ -456,21 +456,21 @@ if selected_video:
                         rels = st.session_state.get('current_rels', [])
                         # Pass pre-calculated results to engine to avoid redundant model runs
                         engine.process_frame_optimized(frame, st.session_state.current_frame, results=results, rels=rels)
-                            
-                            # Update Persistent Narrative (Top)
-                            st_narration.markdown(f"""
-                                <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:15px;'>
-                                    <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ {st.session_state.selected_domain.upper()} NARRATOR</b><br/>
-                                    <span style='font-size:1.1rem; color:white;'>"{engine.last_narration}"</span>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            
-                            # Update Agent Swarm (Sidebar)
-                            with swarm_placeholder.container():
-                                st.write(f"#### 🤖 {st.session_state.selected_domain} Agent Swarm")
-                                st.error(f"**Consensus Verdict:** {engine.last_verdict}")
-                                if getattr(engine, 'instant_alert', False):
-                                    st.warning("⚠️ **IMPACT REFLEX TRIGGERED**")
+                        
+                        # Update Persistent Narrative (Top)
+                        st_narration.markdown(f"""
+                            <div style='background: linear-gradient(90deg, #1e3a8a, #1e40af); padding:15px; border-radius:10px; border-left: 5px solid #3b82f6; margin-bottom:15px;'>
+                                <b style='color:#93c5fd; font-size:0.8rem;'>🎙️ {st.session_state.selected_domain.upper()} NARRATOR</b><br/>
+                                <span style='font-size:1.1rem; color:white;'>"{engine.last_narration}"</span>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Update Agent Swarm (Sidebar)
+                        with swarm_placeholder.container():
+                            st.write(f"#### 🤖 {st.session_state.selected_domain} Agent Swarm")
+                            st.error(f"**Consensus Verdict:** {engine.last_verdict}")
+                            if getattr(engine, 'instant_alert', False):
+                                st.warning("⚠️ **IMPACT REFLEX TRIGGERED**")
 
                         else:
                             frame_annotated = frame.copy()
