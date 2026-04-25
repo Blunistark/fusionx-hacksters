@@ -267,10 +267,14 @@ if selected_video:
             
         if is_live or os.path.exists(video_path):
             try:
-                # Initialize Vision Models
+                # Initialize Super Vision Engine (Multi-Model)
                 if 'yolo_detector' not in st.session_state:
-                    from perception.detector import Detector
-                    st.session_state.yolo_detector = Detector(backend='ultralytics', model_path='yolov8n.pt', device='cuda')
+                    from perception.detector import SuperDetector
+                    from agent_integration import DOMAIN_MODELS
+                    domain_models = DOMAIN_MODELS.get(st.session_state.selected_domain, ["yolov8n.pt"]).copy()
+                    if "yolov8n-face.pt" not in domain_models:
+                        domain_models.append("yolov8n-face.pt")
+                    st.session_state.yolo_detector = SuperDetector(model_paths=domain_models, device='cuda')
                     
                 if 'reltr_generator' not in st.session_state:
                     import sys
@@ -369,13 +373,13 @@ if selected_video:
                                 except: pass
                             st.session_state.current_rels = current_rels
                         
-                        else:
-                            # --- PHASE 1: YOLO + HEURISTIC ENGINE ---
-                            detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
+                            # --- PHASE 1: SUPER VISION ENGINE (Boxes + Poses + Faces) ---
+                            results = st.session_state.yolo_detector.detect(frame, conf=0.4)
                             from perception.detector import draw_detections
-                            frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
+                            frame_annotated = draw_detections(frame.copy(), results)
                             
-                            # Format DSG nodes
+                            # Format DSG nodes from combined detections
+                            detections = results.get("detections", [])
                             for i, det in enumerate(detections):
                                 cls_name = det['label']
                                 
@@ -438,7 +442,8 @@ if selected_video:
                             engine = st.session_state[engine_key]
                             # Process frame with optional relationships from RelTR
                             rels = st.session_state.get('current_rels', [])
-                            frame_annotated = engine.process_frame(frame, st.session_state.current_frame, rels=rels)
+                            # Pass pre-calculated results to engine to avoid redundant model runs
+                            engine.process_frame_optimized(frame, st.session_state.current_frame, results=results, rels=rels)
                             
                             # Update Persistent Narrative (Top)
                             st_narration.markdown(f"""
