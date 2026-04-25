@@ -50,8 +50,9 @@ class FusionXEngine:
         self.last_verdict = "Stable"
         self.instant_alert = False
         self.is_thinking = False
-        self.SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "")
+        self.SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "sk_ikb2i84u_feROSQZbrdCM3BBd3uFu5kB0")
         self.SARVAM_URL = "https://api.sarvam.ai/text-to-speech"
+        self.tts_enabled = True
         self.OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
         self.OLLAMA_MODEL = "llama3"
 
@@ -106,7 +107,7 @@ class FusionXEngine:
 
     def speak_sync(self, text):
         """Sarvam AI TTS Sync for UI"""
-        if not self.SARVAM_API_KEY:
+        if not self.SARVAM_API_KEY or not self.tts_enabled:
             print(f"🔇 [UI TTS DISABLED]: {text}")
             return
             

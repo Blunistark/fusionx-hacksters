@@ -196,6 +196,16 @@ with st.sidebar:
     st.session_state.vision_engine = vision_engine
     
     st.divider()
+    
+    # TTS Toggle
+    tts_enabled = st.toggle("🎙️ Enable AI Narration", value=True)
+    
+    # Sync toggle state with engine
+    engine_key = f"{st.session_state.selected_domain.lower()}_engine"
+    if engine_key in st.session_state:
+        st.session_state[engine_key].tts_enabled = tts_enabled
+    
+    st.divider()
 
 # Main content area
 if selected_video:

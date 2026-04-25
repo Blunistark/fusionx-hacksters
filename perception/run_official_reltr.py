@@ -38,6 +38,7 @@ class FusionXUltraMaster:
         self.is_summarizing = False
         self.SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "sk_ikb2i84u_feROSQZbrdCM3BBd3uFu5kB0")
         self.SARVAM_URL = "https://api.sarvam.ai/text-to-speech"
+        self.tts_enabled = True
         
         # Domain-Specific Narrator Personalities
         self.DOMAIN_CONFIGS = {
@@ -142,8 +143,8 @@ class FusionXUltraMaster:
 
     def speak_commentary(self, text):
         """Sarvam AI TTS Integration"""
-        if not self.SARVAM_API_KEY:
-            print(f"🔇 [TTS DISABLED - NO API KEY]: {text}")
+        if not self.SARVAM_API_KEY or not self.tts_enabled:
+            print(f"🔇 [TTS DISABLED]: {text}")
             return
             
         print(f"🎙️ [SARVAM AI SYNCING]: {text}")
