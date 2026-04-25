@@ -221,18 +221,12 @@ if selected_video:
     video_path = 0 if is_live_cam else os.path.join(os.path.dirname(__file__), '..', 'assets', selected_video)
     
     # Tabs for different views
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         "📺 Video & Analysis",
-        "📊 Event Stream",
-        "🤖 Agent Outputs",
         "📈 Domain Dashboard",
-        "🔍 Prompt Engineering"
+        "📊 Event Stream"
     ])
     
-    with tab5:
-        st.subheader("LLM Prompt Diagnostics")
-        st.write("View the exact micro-prompts being sent to the LLM in real-time.")
-        prompt_placeholder = st.empty()
 
     with tab1:
         st.subheader(f"Video: {selected_video}")
@@ -527,71 +521,15 @@ if selected_video:
             st.warning(f"Video file not found: {video_path}")
     
     with tab2:
-        st.subheader("Event Detection Stream")
-        render_event_stream(st.session_state.events_log, st.session_state.domain_state)
-    
-    with tab3:
-        st.subheader("LLM Agent Outputs")
-        render_agent_outputs(st.session_state.agent_pool.active_agents, st.session_state.domain_state)
-    
-    with tab4:
         st.subheader("Domain Dashboard")
         render_match_dashboard(st.session_state.domain_state)
+        
+    with tab3:
+        st.subheader("Event Detection Stream")
+        render_event_stream(st.session_state.events_log, st.session_state.domain_state)
 else:
     st.info("👈 Select a video from the sidebar to get started")
 
-# Interactive commentary simulation & Live Sync
-st.divider()
-
-col_sync, col_sim = st.columns([1, 1])
-
-with col_sync:
-    st.subheader("📡 Live Engine Feed")
-    if st.button("🔄 Sync with Engine Layer", use_container_width=True):
-        try:
-            response = requests.get("http://localhost:8000/history", timeout=2)
-            if response.status_code == 200:
-                history = response.json().get("history", [])
-                st.session_state.commentary_history = history
-                st.success(f"Synced {len(history)} events from the Engine!")
-                st.rerun()
-            else:
-                st.error("Engine responded with an error.")
-        except requests.exceptions.RequestException:
-            st.error("Could not connect to FastAPI Engine. Is it running?")
-
-with col_sim:
-    st.subheader("💬 Manual Override Simulation")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        event_description = st.text_area(
-            "Describe what happened in the current frame",
-            placeholder="e.g., The ball has pitched on good length, outside off stump..."
-        )
-    
-    with col2:
-        if st.button("🎙️ Generate Commentary", use_container_width=True):
-            if event_description:
-                with st.spinner("Generating commentary..."):
-                    # Get commentary from agent pool
-                    commentary = st.session_state.agent_pool.generate_commentary(
-                        event_description,
-                        st.session_state.domain_state,
-                        st.session_state.selected_domain
-                    )
-                    
-                    if commentary:
-                        st.session_state.commentary_history.append({
-                            'timestamp': datetime.now().isoformat(),
-                            'event': event_description,
-                            'commentary': commentary
-                        })
-                        st.success("✅ Commentary generated!")
-                        st.markdown(f"*{commentary}*")
-            else:
-                st.warning("Please describe an event first")
 
 # Footer
 st.divider()
