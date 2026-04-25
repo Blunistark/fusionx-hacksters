@@ -336,7 +336,7 @@ if selected_video:
                         if st.session_state.vision_engine == "RelTR Transformer (Experimental)" or "RelTR" in st.session_state.vision_engine:
                             # --- PHASE 3: RELTR SCENE GRAPH GENERATION ---
                             scene_graph = st.session_state.reltr_generator.generate_scene_graph(frame)
-                            frame_annotated = frame.copy()
+                            frame_annotated = st.session_state.reltr_generator.draw_scene_graph(frame.copy(), scene_graph)
                             
                             # Map RelTR graph to UI json format
                             for node in scene_graph['nodes']:
@@ -372,7 +372,8 @@ if selected_video:
                         else:
                             # --- PHASE 1: YOLO + HEURISTIC ENGINE ---
                             detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
-                            frame_annotated = frame.copy()
+                            from perception.detector import draw_detections
+                            frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
                             
                             # Format DSG nodes
                             for i, det in enumerate(detections):

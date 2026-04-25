@@ -96,6 +96,15 @@ class FusionXEngine:
             payload = {"model": "llava", "prompt": prompt, "images": [img_str], "stream": False}
             res = requests.post(self.OLLAMA_URL, json=payload, timeout=15)
             self.last_narration = res.json().get('response', 'Observing...')
+            
+            # Update Swarm Verdict based on context
+            if hazards:
+                self.last_verdict = "CRITICAL: " + hazards[0]
+            elif "clear" in self.last_narration.lower() or "stable" in self.last_narration.lower():
+                self.last_verdict = "Stable"
+            else:
+                self.last_verdict = "Active"
+                
             self.speak_sync(self.last_narration)
         except:
             try:
