@@ -34,12 +34,16 @@ class FusionXUltraMaster:
         self.is_narrating = False
         self.instant_alert = False
         self.current_rels = []
+        self.long_term_memory = deque(maxlen=120) # 1 hour context (120 * 30s)
+        self.is_summarizing = False
+        self.SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "sk_ikb2i84u_feROSQZbrdCM3BBd3uFu5kB0")
+        self.SARVAM_URL = "https://api.sarvam.ai/text-to-speech"
         
         # Domain-Specific Narrator Personalities
         self.DOMAIN_CONFIGS = {
             "Cricket": {
-                "role": "Expert Cricket Commentator",
-                "task": "Provide a high-energy, technical 1-sentence summary of the action using cricket terminology (e.g. good length, square leg, striker, delivery).",
+                "role": "Expert Cricket Commentator on LIVE TV",
+                "task": "Provide a high-energy, technical 1-sentence summary of the LIVE action. NEVER use phrases like 'In the image' or 'The player is seen'. Speak as if you are on air right now.",
             },
             "Traffic": {
                 "role": "Traffic Safety Swarm",
@@ -106,6 +110,11 @@ class FusionXUltraMaster:
         try:
             res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=5)
             self.last_swarm_verdict = res.json().get('response', 'System stable.')
+            
+            # Add to long term memory if significant
+            if self.instant_alert:
+                self.long_term_memory.append(f"ALERT: {self.last_swarm_verdict}")
+                
             self.save_state(frame_copy, detections, hazards)
         except: pass
         self.is_thinking = False
@@ -113,16 +122,63 @@ class FusionXUltraMaster:
     def ask_narrator_async(self):
         self.is_narrating = True
         config = self.DOMAIN_CONFIGS.get(self.domain, self.DOMAIN_CONFIGS["Cricket"])
+        
+        # Build Cognitive History Context
+        history_summary = list(self.long_term_memory)[-10:] # Last 10 significant summaries
         context = {
-            "recent_events": self.intelligence_logs[-5:],
-            "detected_relationships": self.current_rels
+            "recent_5s_events": self.intelligence_logs[-5:],
+            "detected_relationships": self.current_rels,
+            "hourly_narrative_context": history_summary
         }
-        prompt = f"ROLE: {config['role']}\nTASK: {config['task']}\nCONTEXT: {context}"
+        
+        prompt = f"ROLE: {config['role']}\nTASK: {config['task']} (Make it flow naturally with previous context)\nCONTEXT: {context}"
         try:
             res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
-            self.last_narration = res.json().get('response', 'Observing action.')
+            self.last_narration = res.json().get('response', 'Continuing analysis.')
+            self.long_term_memory.append(self.last_narration)
+            self.speak_commentary(self.last_narration)
         except: pass
         self.is_narrating = False
+
+    def speak_commentary(self, text):
+        """Sarvam AI TTS Integration"""
+        if not self.SARVAM_API_KEY:
+            print(f"🔇 [TTS DISABLED - NO API KEY]: {text}")
+            return
+            
+        print(f"🎙️ [SARVAM AI SYNCING]: {text}")
+        threading.Thread(target=self.call_sarvam_tts, args=(text,)).start()
+
+    def call_sarvam_tts(self, text):
+        payload = {
+            "inputs": [text],
+            "target_language_code": "en-IN",
+            "speaker": "meera",
+            "pitch": 0,
+            "pace": 1.1,
+            "loudness": 1.5,
+            "speech_sample_rate": 22050,
+            "enable_preprocessing": True,
+            "model": "bulbul:v1"
+        }
+        headers = {"api-subscription-key": self.SARVAM_API_KEY}
+        
+        try:
+            res = requests.post(self.SARVAM_URL, json=payload, headers=headers, timeout=10)
+            if res.status_code == 200:
+                audio_base64 = res.json().get('audios', [None])[0]
+                if audio_base64:
+                    import base64
+                    import winsound
+                    audio_data = base64.b64decode(audio_base64)
+                    temp_audio = "commentary_temp.wav"
+                    with open(temp_audio, "wb") as f:
+                        f.write(audio_data)
+                    winsound.PlaySound(temp_audio, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            else:
+                print(f"⚠️ Sarvam AI TTS Error: {res.status_code}")
+        except Exception as e:
+            print(f"❌ Sarvam AI TTS Failed: {str(e)}")
 
     def run(self, video_path):
         cap = cv2.VideoCapture(video_path)
@@ -164,7 +220,7 @@ class FusionXUltraMaster:
                 if not self.is_thinking:
                     threading.Thread(target=self.ask_swarm_async, args=(frame.copy(), detections, current_rels, hazards)).start()
 
-            if self.frame_count % 150 == 0 and not self.is_narrating and self.intelligence_logs:
+            if self.frame_count % 900 == 0 and not self.is_narrating and self.intelligence_logs:
                 threading.Thread(target=self.ask_narrator_async).start()
 
             # Dashboard Visuals

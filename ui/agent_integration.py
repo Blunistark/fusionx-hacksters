@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'R
 
 # --- DOMAIN INTELLIGENCE CONFIG ---
 DOMAIN_PROMPTS = {
-    "Cricket": "You are an Expert Cricket Commentator. Your goal is to provide high-energy, technical live commentary. Use terminology like 'striker', 'good length', 'crease', 'deep mid-wicket'. Focus on the action and movement, not just stating what is in the image.",
+    "Cricket": "You are an Expert Cricket Commentator on LIVE TV. Provide high-energy, technical commentary. NEVER use phrases like 'In the image', 'The picture shows', or 'I can see'. Speak directly about the action as it happens. Use terminology like 'striker', 'good length', 'crease', 'deep mid-wicket'.",
     "Security": "You are a Senior Security Analyst. Provide formal, precise threat assessments. Focus on perimeter integrity, unauthorized movement, and suspicious behavioral patterns. Maintain a professional, alert tone.",
     "Traffic": "You are a Traffic Flow Intelligence Agent. Analyze traffic density, vehicle behavior, and potential safety hazards. Focus on flow efficiency and incident detection using technical terminology."
 }
@@ -46,10 +46,12 @@ class FusionXEngine:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.models = [YOLO(m) for m in DOMAIN_MODELS.get(domain, ["yolov8n.pt"])]
         
-        self.last_narration = f"Initializing {domain} Intelligence..."
+        self.last_narration = "Awaiting Vision Data..."
         self.last_verdict = "Stable"
         self.instant_alert = False
         self.is_thinking = False
+        self.SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "")
+        self.SARVAM_URL = "https://api.sarvam.ai/text-to-speech"
         self.OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
         self.OLLAMA_MODEL = "llama3"
 
@@ -61,7 +63,6 @@ class FusionXEngine:
                 if box.conf[0] > 0.4:
                     label = model.names[int(box.cls[0])]
                     detections.append({"label": label, "bbox": box.xyxy[0].tolist()})
-                    cv2.rectangle(frame, (int(box.xyxy[0][0]), int(box.xyxy[0][1])), (int(box.xyxy[0][2]), int(box.xyxy[0][3])), (0, 255, 0), 1)
 
         self.instant_alert = False
         hazards = []
@@ -79,7 +80,8 @@ class FusionXEngine:
                 self.instant_alert = True
                 hazards.append("Crowd Density Alert")
 
-        if frame_count % 90 == 0 and detections and not self.is_thinking:
+        # Human-like frequency: Every 900 frames (~30s)
+        if frame_count % 900 == 0 and detections and not self.is_thinking:
             _, buffer = cv2.imencode('.jpg', frame)
             img_str = base64.b64encode(buffer).decode('utf-8')
             threading.Thread(target=self.ask_vision_ollama, args=(detections, hazards, img_str, rels)).start()
@@ -88,14 +90,53 @@ class FusionXEngine:
 
     def ask_vision_ollama(self, detections, hazards, img_str, rels=None):
         self.is_thinking = True
-        prompt = f"ROLE: {DOMAIN_PROMPTS[self.domain]}\nDATA: {detections}\nRELATIONSHIPS: {rels}\nALERTS: {hazards}\nTASK: Provide professional expert {self.domain} commentary/assessment of this scene in 1 sentence."
+        prompt = f"ROLE: {DOMAIN_PROMPTS[self.domain]}\nDATA: {detections}\nRELATIONSHIPS: {rels}\nALERTS: {hazards}\nTASK: You are on live TV. Provide a 1-sentence expert commentary of the CURRENT ACTION. Do not mention that you are looking at an image."
         try:
             payload = {"model": "llava", "prompt": prompt, "images": [img_str], "stream": False}
             res = requests.post(self.OLLAMA_URL, json=payload, timeout=15)
             self.last_narration = res.json().get('response', 'Observing...')
+            self.speak_sync(self.last_narration)
         except:
             try:
                 res = requests.post(self.OLLAMA_URL, json={"model": self.OLLAMA_MODEL, "prompt": prompt, "stream": False}, timeout=10)
                 self.last_narration = res.json().get('response', 'Stable.')
+                self.speak_sync(self.last_narration)
             except: self.last_narration = "Brain Offline."
         self.is_thinking = False
+
+    def speak_sync(self, text):
+        """Sarvam AI TTS Sync for UI"""
+        if not self.SARVAM_API_KEY:
+            print(f"🔇 [UI TTS DISABLED]: {text}")
+            return
+            
+        print(f"🔊 [SARVAM AI SYNCING]: {text}")
+        threading.Thread(target=self.call_sarvam_tts, args=(text,)).start()
+
+    def call_sarvam_tts(self, text):
+        payload = {
+            "inputs": [text],
+            "target_language_code": "en-IN",
+            "speaker": "meera",
+            "pitch": 0,
+            "pace": 1.1,
+            "loudness": 1.5,
+            "speech_sample_rate": 22050,
+            "enable_preprocessing": True,
+            "model": "bulbul:v1"
+        }
+        headers = {"api-subscription-key": self.SARVAM_API_KEY}
+        
+        try:
+            res = requests.post(self.SARVAM_URL, json=payload, headers=headers, timeout=10)
+            if res.status_code == 200:
+                audio_base64 = res.json().get('audios', [None])[0]
+                if audio_base64:
+                    import base64
+                    import winsound
+                    audio_data = base64.b64decode(audio_base64)
+                    temp_audio = "ui_commentary_temp.wav"
+                    with open(temp_audio, "wb") as f:
+                        f.write(audio_data)
+                    winsound.PlaySound(temp_audio, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        except: pass

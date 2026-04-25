@@ -29,7 +29,7 @@ from config import DOMAINS
 
 # Page configuration
 st.set_page_config(
-    page_title="FusionX: Real-Time Event Engine",
+    page_title="Real-Time Event Engine",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -136,7 +136,7 @@ def get_available_videos():
 
 # Main layout
 domain_cfg = DOMAINS[st.session_state.selected_domain]
-st.title(f"{domain_cfg['icon']} FusionX: {st.session_state.selected_domain} Event Engine")
+st.title(f"{domain_cfg['icon']} {st.session_state.selected_domain} Event Engine")
 
 # Sidebar
 with st.sidebar:
@@ -326,7 +326,7 @@ if selected_video:
                         if st.session_state.vision_engine == "RelTR Transformer (Experimental)" or "RelTR" in st.session_state.vision_engine:
                             # --- PHASE 3: RELTR SCENE GRAPH GENERATION ---
                             scene_graph = st.session_state.reltr_generator.generate_scene_graph(frame)
-                            frame_annotated = st.session_state.reltr_generator.draw_scene_graph(frame.copy(), scene_graph)
+                            frame_annotated = frame.copy()
                             
                             # Map RelTR graph to UI json format
                             for node in scene_graph['nodes']:
@@ -362,8 +362,7 @@ if selected_video:
                         else:
                             # --- PHASE 1: YOLO + HEURISTIC ENGINE ---
                             detections = st.session_state.yolo_detector.detect(frame, conf=0.5)
-                            from perception.detector import draw_detections
-                            frame_annotated = draw_detections(frame.copy(), detections) if detections else frame.copy()
+                            frame_annotated = frame.copy()
                             
                             # Format DSG nodes
                             for i, det in enumerate(detections):
@@ -556,7 +555,7 @@ with col_sim:
 st.divider()
 st.markdown(f"""
 <div style='text-align: center; color: #666; padding: 20px;'>
-    <p><strong>FusionX {st.session_state.selected_domain} Analysis System</strong></p>
+    <p><strong>{st.session_state.selected_domain} Analysis System</strong></p>
     <p>Powered by YOLOv8 + DSG Engine + LLM Agents</p>
     <p><small>Real-time computer vision meets intelligent narration</small></p>
 </div>
