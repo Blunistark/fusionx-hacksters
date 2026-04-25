@@ -134,10 +134,14 @@ class FusionXEngine:
                 audio_base64 = res.json().get('audios', [None])[0]
                 if audio_base64:
                     import base64
-                    import winsound
-                    audio_data = base64.b64decode(audio_base64)
-                    temp_audio = "ui_commentary_temp.wav"
-                    with open(temp_audio, "wb") as f:
-                        f.write(audio_data)
-                    winsound.PlaySound(temp_audio, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    self.current_audio = base64.b64decode(audio_base64)
+            else:
+                print(f"⚠️ Sarvam AI TTS Error: {res.status_code}")
         except: pass
+
+    def get_audio(self):
+        """Retrieve and clear current audio buffer"""
+        audio = getattr(self, 'current_audio', None)
+        if audio:
+            self.current_audio = None
+        return audio

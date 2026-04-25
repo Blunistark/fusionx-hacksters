@@ -490,6 +490,12 @@ if selected_video:
                         raw_placeholder.image(raw_buf.tobytes(), use_container_width=True)
                         analysis_placeholder.image(ann_buf.tobytes(), use_container_width=True)
                         
+                        # Browser Audio Playback
+                        if tts_enabled:
+                            audio_bytes = engine.get_audio()
+                            if audio_bytes:
+                                st.audio(audio_bytes, format="audio/wav", autoplay=True)
+                        
                         import time
                         time.sleep(0.01) # Small sleep to prevent CPU spike
                 
