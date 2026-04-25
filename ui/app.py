@@ -444,6 +444,13 @@ if selected_video:
                         engine_key = f"{st.session_state.selected_domain.lower()}_engine"
                         if engine_key in st.session_state:
                             engine = st.session_state[engine_key]
+                            # Auto-fix for session state persistence during upgrades
+                            if not hasattr(engine, 'process_frame_optimized'):
+                                from agent_integration import FusionXEngine
+                                st.session_state[engine_key] = FusionXEngine(domain=st.session_state.selected_domain)
+                                engine = st.session_state[engine_key]
+                                
+                            engine = st.session_state[engine_key]
                             # Process frame with optional relationships from RelTR
                             rels = st.session_state.get('current_rels', [])
                             # Pass pre-calculated results to engine to avoid redundant model runs
