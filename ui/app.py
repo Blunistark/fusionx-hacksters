@@ -176,6 +176,16 @@ with st.sidebar:
     videos.insert(0, "Live Webcam (0)")
     if videos:
         selected_video = st.selectbox("Select Video", videos)
+        
+        # Reset state on video change
+        if 'last_selected_video' not in st.session_state or selected_video != st.session_state.last_selected_video:
+            st.session_state.last_selected_video = selected_video
+            st.session_state.playing = False
+            st.session_state.current_frame = 0
+            st.session_state.events_log = []
+            st.session_state.commentary_history = []
+            st.rerun()
+            
         st.session_state.selected_video = selected_video
         
         youtube_url = None

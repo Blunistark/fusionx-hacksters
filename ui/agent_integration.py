@@ -80,7 +80,7 @@ class FusionXEngine:
                 hazards.append("Crowd Density Alert")
 
         # Human-like frequency: Every 900 frames (~30s)
-        if frame_count % 900 == 0 and detections and not self.is_thinking:
+        if frame_count % 150 == 0 and detections and not self.is_thinking:
             _, buffer = cv2.imencode('.jpg', frame)
             img_str = base64.b64encode(buffer).decode('utf-8')
             threading.Thread(target=self.ask_vision_ollama, args=(detections, hazards, img_str, rels)).start()
@@ -113,7 +113,7 @@ class FusionXEngine:
                 hazards.append("Crowd Density Alert")
 
         # Human-like frequency: Every 900 frames (~30s)
-        if frame_count % 900 == 0 and detections and not self.is_thinking:
+        if frame_count % 150 == 0 and detections and not self.is_thinking:
             _, buffer = cv2.imencode('.jpg', frame)
             img_str = base64.b64encode(buffer).decode('utf-8')
             threading.Thread(target=self.ask_vision_ollama, args=(detections, hazards, img_str, rels)).start()
