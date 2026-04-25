@@ -341,6 +341,7 @@ if selected_video:
                         trigger_payload = None
                         frame_nodes = {}
                         results = None
+                        frame_annotated = frame.copy()
                         
                         if st.session_state.vision_engine == "RelTR Transformer (Experimental)" or "RelTR" in st.session_state.vision_engine:
                             # --- PHASE 3: RELTR SCENE GRAPH GENERATION ---
@@ -378,6 +379,7 @@ if selected_video:
                                 except: pass
                             st.session_state.current_rels = current_rels
                         
+                        else:
                             # --- PHASE 1: SUPER VISION ENGINE (Boxes + Poses + Faces) ---
                             results = st.session_state.yolo_detector.detect(frame, conf=0.4)
                             from perception.detector import draw_detections
