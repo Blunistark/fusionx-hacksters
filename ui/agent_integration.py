@@ -21,7 +21,7 @@ DOMAIN_PROMPTS = {
 }
 
 DOMAIN_MODELS = {
-    "Cricket": ["yolov8m.pt", "yolov8m-pose.pt"], 
+    "Cricket": ["yolov8m.pt", "yolov8m-pose.pt", "yolov8s.pt"], 
     "Security": ["yolov8x.pt"], 
     "Traffic": ["yolov8n.pt", "yolov10n.pt"]
 }

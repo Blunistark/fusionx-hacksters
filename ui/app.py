@@ -336,6 +336,7 @@ if selected_video:
                         frame_nodes = {}
                         results = None
                         frame_annotated = frame.copy()
+                        engine = None
                         
                         if st.session_state.vision_engine == "RelTR Transformer (Experimental)" or "RelTR" in st.session_state.vision_engine:
                             # --- PHASE 3: RELTR SCENE GRAPH GENERATION ---
@@ -439,19 +440,22 @@ if selected_video:
                             
                         # --- FUSIONX DOMAIN INTELLIGENCE ---
                         engine_key = f"{st.session_state.selected_domain.lower()}_engine"
-                        if engine_key in st.session_state:
+                        if engine_key not in st.session_state:
+                            from agent_integration import FusionXEngine
+                            st.session_state[engine_key] = FusionXEngine(domain=st.session_state.selected_domain)
+                        
+                        engine = st.session_state[engine_key]
+                        
+                        # Auto-fix for session state persistence during upgrades
+                        if not hasattr(engine, 'process_frame_optimized'):
+                            from agent_integration import FusionXEngine
+                            st.session_state[engine_key] = FusionXEngine(domain=st.session_state.selected_domain)
                             engine = st.session_state[engine_key]
-                            # Auto-fix for session state persistence during upgrades
-                            if not hasattr(engine, 'process_frame_optimized'):
-                                from agent_integration import FusionXEngine
-                                st.session_state[engine_key] = FusionXEngine(domain=st.session_state.selected_domain)
-                                engine = st.session_state[engine_key]
-                                
-                            engine = st.session_state[engine_key]
-                            # Process frame with optional relationships from RelTR
-                            rels = st.session_state.get('current_rels', [])
-                            # Pass pre-calculated results to engine to avoid redundant model runs
-                            engine.process_frame_optimized(frame, st.session_state.current_frame, results=results, rels=rels)
+                        
+                        # Process frame with optional relationships from RelTR
+                        rels = st.session_state.get('current_rels', [])
+                        # Pass pre-calculated results to engine to avoid redundant model runs
+                        engine.process_frame_optimized(frame, st.session_state.current_frame, results=results, rels=rels)
                             
                             # Update Persistent Narrative (Top)
                             st_narration.markdown(f"""
