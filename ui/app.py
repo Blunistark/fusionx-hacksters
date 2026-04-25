@@ -340,6 +340,7 @@ if selected_video:
                         # 1. Vision Analysis & DSG Generation
                         trigger_payload = None
                         frame_nodes = {}
+                        results = None
                         
                         if st.session_state.vision_engine == "RelTR Transformer (Experimental)" or "RelTR" in st.session_state.vision_engine:
                             # --- PHASE 3: RELTR SCENE GRAPH GENERATION ---
