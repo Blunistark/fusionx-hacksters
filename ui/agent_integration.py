@@ -57,6 +57,36 @@ class FusionXEngine:
         self.OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
         self.OLLAMA_MODEL = "llama3"
 
+    def process_frame_optimized(self, frame, frame_count, results=None, rels=None):
+        """Optimized version that receives pre-calculated detections from the SuperDetector"""
+        if results is None:
+            return self.process_frame(frame, frame_count, rels)
+            
+        detections = results.get("detections", [])
+        self.instant_alert = False
+        hazards = []
+        
+        # Hazard Detection Logic (Spatial Heuristics)
+        if self.domain == "Traffic":
+            for i, d1 in enumerate(detections):
+                for j, d2 in enumerate(detections):
+                    if i >= j: continue
+                    if abs(d1['box'][3] - d2['box'][3]) < 40: # Y-axis proximity check
+                        self.instant_alert = True
+                        hazards.append(f"{d1['label']} IMPACT {d2['label']}")
+        elif self.domain == "Security":
+            if len([d for d in detections if d['label'] == 'person']) > 5:
+                self.instant_alert = True
+                hazards.append("Crowd Density Alert")
+
+        # Human-like frequency: Every 900 frames (~30s)
+        if frame_count % 900 == 0 and detections and not self.is_thinking:
+            _, buffer = cv2.imencode('.jpg', frame)
+            img_str = base64.b64encode(buffer).decode('utf-8')
+            threading.Thread(target=self.ask_vision_ollama, args=(detections, hazards, img_str, rels)).start()
+
+        return frame
+
     def process_frame(self, frame, frame_count, rels=None):
         detections = []
         for model in self.models:
