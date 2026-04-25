@@ -197,44 +197,6 @@ with st.sidebar:
     
     st.divider()
 
-    # Domain-specific configuration
-    st.subheader(f"{domain_cfg['icon']} {selected_domain} Setup")
-    
-    if selected_domain == "Cricket":
-        st.session_state.domain_state['striker'] = st.text_input("Striker", st.session_state.domain_state.get('striker', ''))
-        st.session_state.domain_state['bowler'] = st.text_input("Bowler", st.session_state.domain_state.get('bowler', ''))
-    elif selected_domain == "Security":
-        st.session_state.domain_state['location'] = st.text_input("Camera Location", st.session_state.domain_state.get('location', ''))
-    elif selected_domain == "Traffic":
-        st.session_state.domain_state['intersection'] = st.text_input("Intersection Name", st.session_state.domain_state.get('intersection', ''))
-
-    st.session_state.domain_state['phase'] = st.selectbox(
-        "Operation Phase",
-        domain_cfg['phases'],
-        index=domain_cfg['phases'].index(st.session_state.domain_state.get('phase', domain_cfg['phases'][0]))
-    )
-    
-    st.divider()
-    
-    # Agent configuration
-    st.subheader("LLM Agents")
-    agent_models = st.multiselect(
-        "Select Active Agents",
-        ["Ollama (Local)"],
-        default=["Ollama (Local)"]
-    )
-    st.session_state.agent_pool.active_agents = agent_models
-    
-    st.divider()
-    
-    # System info
-    st.subheader("System Status")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Events Logged", len(st.session_state.events_log))
-    with col2:
-        st.metric("Commentary Lines", len(st.session_state.commentary_history))
-
 # Main content area
 if selected_video:
     is_live_cam = selected_video == "Live Webcam (0)"
